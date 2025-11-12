@@ -5,12 +5,14 @@ import pandapower as pp
 import sys, os
 import uuid 
 sys.path.insert(0, os.path.abspath('..'))
+from multiprocessing import Pool, cpu_count
+from functools import partial
 
 # --- GA Configuration ---
 # "tune" these parameters to get better results
 NUM_PROFILES = 17            # DO NOT CHANGE: number of load/generation nodes
-POPULATION_SIZE = 10         # number of allocations to test in each generation
-NUM_GENERATIONS = 10         # number of times to evolve the population
+POPULATION_SIZE = 50         # number of allocations to test in each generation
+NUM_GENERATIONS = 30         # number of times to evolve the population
 TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
 MUTATION_RATE = 0.1          # 10% chance an allocation will be randomly mutated
 CROSSOVER_RATE = 0.9         # 90% chance parents will "breed" (vs. just cloning)
@@ -100,15 +102,20 @@ def calculate_fitness(allocation: list[int], net) -> tuple[float, float]:
         
         # 3. Find the maximum line loading
         max_loading = res_df.iloc[:, 1].max()
+
+        # 4. Confirm that no line is overloaded (> 100%)
+        if max_loading > 100.0:
+            print(f"WARNING: Allocation {allocation} caused overload! Max loading: {max_loading}%")
+            return 0.0, max_loading
     
-        # 4. Clean up the results folder (MISSING)
+        # 5. Clean up the results folder (MISSING)
         try:
             import shutil
             shutil.rmtree(res_path)
         except Exception as e:
             print(f"ERROR: Could not delete results folder {res_path}: {e}")
 
-        # 5. Calculate fitness (minimize loading -> maximize fitness)
+        # 6. Calculate fitness (minimize loading -> maximize fitness)
         if max_loading == 0:
             fitness = float('inf') # Avoid divistion by zero
         else:
@@ -197,6 +204,15 @@ def swap_mutation(allocation: list[int]) -> list[int]:
     allocation[idx1], allocation[idx2] = allocation[idx2], allocation[idx1]
     return allocation
 
+def eval_allocation_wrapper(allocation: list[int], calculate_fitness, net) -> tuple[float, float]:
+    """
+    This is a wrapper function. The 'multiprocessing.Pool' 
+    can only pass one argument to its worker function.
+    This wrapper takes that one argument and then calls out real 
+    fitness function with all the other aruments it needs.
+    """
+    return calculate_fitness(allocation, net)
+
 def main(): 
     print("--- Distribution Grid Genetic Algorithm Optimization ---")
     net = create_grid_B()
@@ -219,12 +235,21 @@ def main():
     print("\n========================================================")
     print("=== Distribution Grid Genetic Algorithm Optimization ===")
     print("========================================================")
+    print(f"CPUs available: {cpu_count()}")
     print(f"Using {POPULATION_SIZE} allocations, evolving for {NUM_GENERATIONS} generations.")
 
     # --- 1. Setup ---
     # Track the solution found across ALL gnerations
     overall_best_allocation = None
     overall_best_loading = float('inf')
+
+    # This 'partial' function "freezes" the extra arguments for our wrapper
+    # This allows us to use 'Pool.map'
+    eval_wrapper_with_args = partial(
+        eval_allocation_wrapper, 
+        calculate_fitness=calculate_fitness,
+        net=net
+    )
 
     # --- 2. Create Initial Population ---
     print("Creating initial population...")
@@ -238,8 +263,14 @@ def main():
         # --- 3a. Evaluate Fitness ---
         print(f"Evaluationg {len(population)} allocations...")
 
+        # This 'with' block creates a pool of worker processes
+        # It automaticalls maps the 'eval_wrapper_with_args' function to each allocation
+        # in the 'population' list across multiple CPU cores
+        with Pool(processes=cpu_count()) as pool:
+            results = pool.map(eval_wrapper_with_args, population)
+
         # Later : parallelize this step
-        results = [calculate_fitness(allocation, net) for allocation in population]
+        # results = [calculate_fitness(allocation, net) for allocation in population]
 
         fitnesses = [res[0] for res in results]
         loadings = [res[1] for res in results]
