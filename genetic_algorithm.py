@@ -11,8 +11,8 @@ from functools import partial
 # --- GA Configuration ---
 # "tune" these parameters to get better results
 NUM_PROFILES = 17            # DO NOT CHANGE: number of load/generation nodes
-POPULATION_SIZE = 50         # number of allocations to test in each generation
-NUM_GENERATIONS = 30         # number of times to evolve the population
+POPULATION_SIZE = 1         # number of allocations to test in each generation
+NUM_GENERATIONS = 1         # number of times to evolve the population
 TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
 MUTATION_RATE = 0.1          # 10% chance an allocation will be randomly mutated
 CROSSOVER_RATE = 0.9         # 90% chance parents will "breed" (vs. just cloning)
@@ -32,7 +32,6 @@ def create_grid_B():
     """
     Creates the pandapower network for Grid B.
     """
-
     # create empty net
     net = pp.create_empty_network()
 
@@ -63,21 +62,23 @@ def create_grid_B():
 
 def get_base_indices(net):
     """
-    Get the list of node indices to be optimized.
+    Get the order of node indices to be optimized.
     Assumes they are indexed 0 to 16.
     """
-    base_indices = list(net.load.index) # maybe change this line
+    index_order_load = list(net.load.index) # maybe change this line
+    index_order_gen = list(net.sgen.index)  # maybe change this line
 
-    if len(base_indices) != NUM_PROFILES:
+
+    if len(index_order_load) != NUM_PROFILES or len(index_order_gen) != NUM_PROFILES:
         print(f"ERROR: Grid must have exactly {NUM_PROFILES} load/generation nodes.")
     
-    return base_indices
+    return index_order_load
 
 # --- 2. Fitness Function ---
 def calculate_fitness(allocation: list[int], net) -> tuple[float, float]:
     """
     This function takes an allocation and returns its
-    fitness score (1 / max_loading) and the max_loading values.
+    fitness score (1 / sum_max_loading) and the sum_max_loading values.
     """
     try: 
         # 1. Call the time series simulation
@@ -87,7 +88,7 @@ def calculate_fitness(allocation: list[int], net) -> tuple[float, float]:
         res_suffix = f"ga_{uuid.uuid4()}"
         res_path = f"./results_{res_suffix}/"
        
-        run_time_series(
+        res_ext, res_lines = run_time_series(
             GEN_DATA_ORIGINAL,
             LOAD_DATA_ORIGINAL,
             net,
@@ -100,15 +101,16 @@ def calculate_fitness(allocation: list[int], net) -> tuple[float, float]:
         res_file = os.path.join(res_path, "res_line", "loading_percent.csv")
         res_df = pd.read_csv(res_file, skiprows=1,sep=";")
         
-        # 3. Find the maximum line loading
-        max_loading = res_df.iloc[:, 1].max()
+        # 3. Calculate the sum of maximum line loadings for each timestep
+        # max_loading = res_df.iloc[:, 1].max()
+        sum_max_loading = res_lines.max(axis=1).sum() 
 
         # 4. Confirm that no line is overloaded (> 100%)
-        if max_loading > 100.0:
-            print(f"WARNING: Allocation {allocation} caused overload! Max loading: {max_loading}%")
-            return 0.0, max_loading
-    
-        # 5. Clean up the results folder (MISSING)
+        if not all(res_lines.max(axis=1) <= 100):
+            print(f"WARNING: Allocation {allocation} caused overload!")
+            return 0.0, 99999.0 # Return very bad fitness and high loading
+            
+        # 5. Clean up the results folder
         try:
             import shutil
             shutil.rmtree(res_path)
@@ -116,12 +118,12 @@ def calculate_fitness(allocation: list[int], net) -> tuple[float, float]:
             print(f"ERROR: Could not delete results folder {res_path}: {e}")
 
         # 6. Calculate fitness (minimize loading -> maximize fitness)
-        if max_loading == 0:
+        if sum_max_loading == 0:
             fitness = float('inf') # Avoid divistion by zero
         else:
-            fitness = 1.0 / max_loading
+            fitness = 1.0 / sum_max_loading
 
-        return fitness, max_loading
+        return fitness, sum_max_loading
     
     except Exception as e:
         print(f"ERROR during fitness calculation: {e}")
@@ -219,18 +221,19 @@ def main():
     print("Distribution Grid:\n", net)
 
     # Testing base allocation and random allocation
-    base_allocation = get_base_indices(create_grid_B())
+    base_allocation = get_base_indices(net)
     print("Base Allocation:", base_allocation)
     
-    fitness, max_loading = calculate_fitness(base_allocation, net)
-    print(f"Test Allocation: {base_allocation}, Fitness: {fitness}, Max Loading: {max_loading}")
+    fitness, sum_max_loading = calculate_fitness(base_allocation, net)
+    print(f"Test Allocation: {base_allocation}, Fitness: {fitness}, Sum Max Loading: {sum_max_loading}")
 
     rand_allocation = create_random_allocation()
     print("Random Allocation:", rand_allocation)
 
-    fitness, max_loading = calculate_fitness(rand_allocation, net)
-    print(f"Test Allocation: {rand_allocation}, Fitness: {fitness}, Max Loading: {max_loading}")
+    fitness, sum_max_loading = calculate_fitness(rand_allocation, net)
+    print(f"Test Allocation: {rand_allocation}, Fitness: {fitness}, Sum Max Loading: {sum_max_loading}")
 
+    """
     # Genetic Algorithm Execution
     print("\n========================================================")
     print("=== Distribution Grid Genetic Algorithm Optimization ===")
@@ -323,6 +326,7 @@ def main():
     print("===============================================")
     print(f"Final best loading found: {overall_best_loading:.2f}%")
     print(f"Optimal allocation: {overall_best_allocation}")
+    """
 
 if __name__ == "__main__":
     main()
