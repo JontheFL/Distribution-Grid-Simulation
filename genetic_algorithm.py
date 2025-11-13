@@ -21,13 +21,16 @@ sys.path.insert(0, os.path.abspath('..'))
 from multiprocessing import Pool, cpu_count
 from functools import partial
 import argparse
+import json
+import datetime
+import time
 
 # --- GA Configuration ---
 # "tune" these parameters to get better results
 NUM_PROFILES = 17           # DO NOT CHANGE: number of load/generation nodes
 POPULATION_SIZE = 12         # number of allocations to test in each generation
 NUM_GENERATIONS = 5         # number of times to evolve the population
-TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
+TOURNAMENT_SIZE = 5          # how many allocations "compete" to be a parent
 MUTATION_RATE = 0.1          # 5% chance an allocation will be randomly mutated
 CROSSOVER_RATE = 0.9         # 90% chance parents will "breed" (vs. just cloning)
 
@@ -322,6 +325,18 @@ def main():
 
     args = parser.parse_args()
 
+    # Optional: reproducibility seed and single-threaded debug mode
+    parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducible runs")
+    parser.add_argument("--no_parallel", action="store_true", help="Run evaluations single-threaded (no multiprocessing)")
+
+    # Re-parse to include the new args (safe because defaults are provided)
+    args = parser.parse_args()
+
+    # Apply seed if provided
+    if args.seed is not None:
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+
     # Update global GA parameters based on parsed arguments
     POPULATION_SIZE = args.num_pop
     NUM_GENERATIONS = args.num_gen
@@ -368,6 +383,10 @@ def main():
         net=net
     )
 
+    # Prepare logging for this run
+    gen_logs = []
+    run_start = time.time()
+
     # --- 2. Create Initial Population ---
     print("Creating initial population...")
     # Use the base allocation as one member of the initial population
@@ -397,8 +416,12 @@ def main():
         # This 'with' block creates a pool of worker processes
         # It automaticalls maps the 'eval_wrapper_with_args' function to each allocation
         # in the 'population' list across multiple CPU cores
-        with Pool(processes=cpu_count()) as pool:
-            results = pool.map(eval_wrapper_with_args, population)
+        if getattr(args, 'no_parallel', False):
+            # Single-threaded evaluation (useful for debugging / reproducibility)
+            results = [eval_wrapper_with_args(alloc) for alloc in population]
+        else:
+            with Pool(processes=cpu_count()) as pool:
+                results = pool.map(eval_wrapper_with_args, population)
 
         # Later : parallelize this step
         # results = [calculate_fitness(allocation, net) for allocation in population]
@@ -413,6 +436,18 @@ def main():
         best_gen_loading = loadings[best_gen_index]
 
         print(f"Best Allocation: {best_gen_allocation}, Fitness: {best_gen_fitness}, Max Loading: {best_gen_loading}")
+
+        # Record generation statistics
+        gen_stat = {
+            'generation': gen + 1,
+            'best_fitness': float(best_gen_fitness),
+            'best_loading': float(best_gen_loading),
+            'mean_fitness': float(np.mean(fitnesses)),
+            'median_fitness': float(np.median(fitnesses)),
+            'worst_fitness': float(np.min(fitnesses)),
+            'best_allocation': best_gen_allocation
+        }
+        gen_logs.append(gen_stat)
 
         # -- 3c. Update overall best solution ---
         if best_gen_loading < overall_best_loading:
@@ -455,7 +490,32 @@ def main():
     print(f"Final sum of max loadings: {overall_best_loading:.2f}%")
     print(f"Load Allocation: {overall_best_allocation[0]}")
     print(f"Generation Allocation: {overall_best_allocation[1]}")
-    
+    run_end = time.time()
+
+    # Save a run summary for reproducibility / analysis
+    timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_summary = {
+        'timestamp': timestamp_str,
+        'seed': getattr(args, 'seed', None),
+        'pop_size': POPULATION_SIZE,
+        'num_generations': NUM_GENERATIONS,
+        'mutation_rate': MUTATION_RATE,
+        'crossover_rate': CROSSOVER_RATE,
+        'tournament_size': TOURNAMENT_SIZE,
+        'no_parallel': bool(getattr(args, 'no_parallel', False)),
+        'overall_best_loading': float(overall_best_loading),
+        'overall_best_allocation': overall_best_allocation,
+        'generation_logs': gen_logs,
+        'runtime_seconds': run_end - run_start
+    }
+
+    try:
+        out_file = f"ga_run_{timestamp_str}.json"
+        with open(out_file, 'w') as fh:
+            json.dump(run_summary, fh, indent=2)
+        print(f"Run summary written to: {out_file}")
+    except Exception as e:
+        print(f"Warning: could not write run summary: {e}")
 
 if __name__ == "__main__":
     main()
