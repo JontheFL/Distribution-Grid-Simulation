@@ -1,3 +1,16 @@
+"""
+Generic Algorithm for Distribution Grid Optimization
+
+This script:
+1. Defines a pandapower distribution grid (Grid B).
+2. Implements a genetic algorithm to optimize the allocation of load and generation profiles
+    to minimize the sum of maximum line loadings over a time series simulation.
+
+
+Usage:
+    python genetic_algorithm.py --num_pop 10 --num_gen 20
+"""
+
 import random
 import numpy as np
 import pandas as pd
@@ -7,12 +20,13 @@ import uuid
 sys.path.insert(0, os.path.abspath('..'))
 from multiprocessing import Pool, cpu_count
 from functools import partial
+import argparse
 
 # --- GA Configuration ---
 # "tune" these parameters to get better results
-NUM_PROFILES = 17            # DO NOT CHANGE: number of load/generation nodes
-POPULATION_SIZE = 1         # number of allocations to test in each generation
-NUM_GENERATIONS = 1         # number of times to evolve the population
+NUM_PROFILES = 17           # DO NOT CHANGE: number of load/generation nodes
+POPULATION_SIZE = 10         # number of allocations to test in each generation
+NUM_GENERATIONS = 10         # number of times to evolve the population
 TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
 MUTATION_RATE = 0.1          # 10% chance an allocation will be randomly mutated
 CROSSOVER_RATE = 0.9         # 90% chance parents will "breed" (vs. just cloning)
@@ -60,22 +74,21 @@ def create_grid_B():
     
     return net
 
-def get_base_indices(net):
+def get_base_indices(net) -> tuple[list[int], list[int]]: 
     """
     Get the order of node indices to be optimized.
     Assumes they are indexed 0 to 16.
     """
-    index_order_load = list(net.load.index) # maybe change this line
-    index_order_gen = list(net.sgen.index)  # maybe change this line
-
+    index_order_load = list(net.load.index)
+    index_order_gen = list(net.sgen.index)
 
     if len(index_order_load) != NUM_PROFILES or len(index_order_gen) != NUM_PROFILES:
         print(f"ERROR: Grid must have exactly {NUM_PROFILES} load/generation nodes.")
     
-    return index_order_load
+    return tuple([index_order_load, index_order_gen])
 
 # --- 2. Fitness Function ---
-def calculate_fitness(allocation: list[int], net) -> tuple[float, float]:
+def calculate_fitness(allocation: tuple[list[int], list[int]], net) -> tuple[float, float]:
     """
     This function takes an allocation and returns its
     fitness score (1 / sum_max_loading) and the sum_max_loading values.
@@ -92,8 +105,8 @@ def calculate_fitness(allocation: list[int], net) -> tuple[float, float]:
             GEN_DATA_ORIGINAL,
             LOAD_DATA_ORIGINAL,
             net,
-            index_order_load=allocation,
-            index_order_gen=allocation,
+            index_order_load=allocation[0],
+            index_order_gen=allocation[1],
             results_suffix=res_suffix,
         )
 
@@ -131,23 +144,25 @@ def calculate_fitness(allocation: list[int], net) -> tuple[float, float]:
         return 0.0, 99999.0 # Return very bad fitness and high loading
 
 # --- 3. Genetic Algorithm Operators ---
-def create_random_allocation() -> list[int]:
+def create_random_allocation() -> tuple[list[int], list[int]]:
     """
-    Creates a random allocation of profiles.
+    Creates a random allocation of for load and gen.
     """
-    allocation = random.sample(range(NUM_PROFILES), NUM_PROFILES)
-    return allocation
+    index_order_load = random.sample(range(NUM_PROFILES), NUM_PROFILES)
+    index_order_gen = random.sample(range(NUM_PROFILES), NUM_PROFILES)
+    return tuple([index_order_load, index_order_gen])
 
-def create_initial_population() -> list[list[int]]:
+def create_initial_population(base_allocation: tuple[list[int], list[int]]) -> list[tuple[list[int], list[int]]]:
     """
     Creates the initial population of allocations.
     """
-    population = [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]]  # Start with the base allocation
+    # Start with the base allocation
+    population = [base_allocation]
     for _ in range(POPULATION_SIZE - 1):
         population.append(create_random_allocation())
     return population
 
-def tournament_selection(population: list[list[int]], fitnesses: list[float]) -> list[int]:
+def tournament_selection(population: list[tuple[list[int], list[int]]], fitnesses: list[float]) -> tuple[list[int], list[int]]:
     """
     Selects a parent allocation using tournament selection.
     1. Pick TOURNAMENT_SIZE random allocations from the population.
@@ -165,7 +180,7 @@ def tournament_selection(population: list[list[int]], fitnesses: list[float]) ->
     winner_index = np.argmax(tournament_fitnesses)
     return tournament_allocations[winner_index]
 
-def ordered_crossover(parent1: list[int], parent2: list[int]) -> list[int]:
+def ordered_crossover(parent1_tuple: tuple[list[int], list[int]], parent2_tuple: tuple[list[int], list[int]]) -> tuple[list[int], list[int]]:
     """
     "Breeds" two parents allocations to create a child, preserving the permutation.
     This is called "Ordered Crossover".
@@ -173,27 +188,39 @@ def ordered_crossover(parent1: list[int], parent2: list[int]) -> list[int]:
     1. Take a random "slice" from parent1.
     2. Fill in the child's other slots using genes from parent2, in order, skipping duplicates.
     """
-    child = [None] * NUM_PROFILES
+    none_list = [None] * NUM_PROFILES
+    child_tuple = (none_list.copy(), none_list.copy())
 
     # 1. Select two random crossover points
     start, end = sorted(random.sample(range(NUM_PROFILES), 2))
 
     # 2. Copy the "slice" from parent1 to the child
-    child[start:end] = parent1[start:end]
+    child_tuple[0][start:end] = parent1_tuple[0][start:end]
+    child_tuple[1][start:end] = parent1_tuple[1][start:end]
 
     # 3. Get the list of items not in the slice, in order from parent2
-    parent2_items = [item for item in parent2 if item not in child]
+    parent2_items_load = [item for item in parent2_tuple[0] if item not in child_tuple[0]]
+    parent2_items_gen = [item for item in parent2_tuple[1] if item not in child_tuple[1]]
 
     # 4. Fill the remaining 'None' slots for the child
+    
+    # for load allocation
     idx = 0
     for i in range(NUM_PROFILES):
-        if child[i] is None:
-            child[i] = parent2_items[idx]
+        if child_tuple[0][i] is None:
+            child_tuple[0][i] = parent2_items_load[idx]
+            idx += 1
+    
+    idx = 0
+    # for generation allocation
+    for i in range(NUM_PROFILES):
+        if child_tuple[1][i] is None:
+            child_tuple[1][i] = parent2_items_gen[idx]
             idx += 1
 
-    return child
+    return child_tuple
 
-def swap_mutation(allocation: list[int]) -> list[int]:
+def swap_mutation(allocation: tuple[list[int], list[int]]) -> tuple[list[int], list[int]]:
     """
     Introduces a random change in an allocation.
     1. Pick two random indices.
@@ -203,10 +230,11 @@ def swap_mutation(allocation: list[int]) -> list[int]:
     idx1, idx2 = random.sample(range(NUM_PROFILES), 2)
 
     # Swap the values at those indices
-    allocation[idx1], allocation[idx2] = allocation[idx2], allocation[idx1]
+    allocation[0][idx1], allocation[0][idx2] = allocation[0][idx2], allocation[0][idx1]
+    allocation[1][idx1], allocation[1][idx2] = allocation[1][idx2], allocation[1][idx1]
     return allocation
 
-def eval_allocation_wrapper(allocation: list[int], calculate_fitness, net) -> tuple[float, float]:
+def eval_allocation_wrapper(allocation: tuple[list[int], list[int]], calculate_fitness, net) -> tuple[float, float]:
     """
     This is a wrapper function. The 'multiprocessing.Pool' 
     can only pass one argument to its worker function.
@@ -216,24 +244,53 @@ def eval_allocation_wrapper(allocation: list[int], calculate_fitness, net) -> tu
     return calculate_fitness(allocation, net)
 
 def main(): 
-    print("--- Distribution Grid Genetic Algorithm Optimization ---")
+    global POPULATION_SIZE, NUM_GENERATIONS
+
+    # --- Define Arguments Parser ---
+    parser = argparse.ArgumentParser(description="A script to run genetic algorithm for distribution grid optimization.")
+
+    # Add arguments for population size and number of generations
+    parser.add_argument("--num_pop",
+                        type=int,
+                        default=POPULATION_SIZE,
+                        help=f"Number of allocations in each generation. Default is {POPULATION_SIZE}."
+                        )
+    
+
+    parser.add_argument("--num_gen",
+                        type=int,
+                        default=NUM_GENERATIONS,
+                        help=f"Number of generations to run the algorithm. Default is {NUM_GENERATIONS}."
+                        )
+
+    args = parser.parse_args()
+
+    # Update global GA parameters based on parsed arguments
+    POPULATION_SIZE = args.num_pop
+    NUM_GENERATIONS = args.num_gen
+
+    # --- Test the fitness function ---
+    print("--- Distribution Grid Genetic Algorithm Optimization Test ---")
     net = create_grid_B()
     print("Distribution Grid:\n", net)
 
-    # Testing base allocation and random allocation
+    # Testing for base allocation and random allocation
     base_allocation = get_base_indices(net)
-    print("Base Allocation:", base_allocation)
-    
+    print("\nBase Allocation Test:")
+    print("Load Allocation:", base_allocation[0])
+    print("Generation Allocation:", base_allocation[1])
+    print(base_allocation)
     fitness, sum_max_loading = calculate_fitness(base_allocation, net)
-    print(f"Test Allocation: {base_allocation}, Fitness: {fitness}, Sum Max Loading: {sum_max_loading}")
+    print(f"Fitness: {fitness}, Sum Max Loading: {sum_max_loading}")
 
+    print("\nRandom Allocation Test:")
     rand_allocation = create_random_allocation()
-    print("Random Allocation:", rand_allocation)
-
+    print("Load Allocation:", rand_allocation[0])
+    print("Generation Allocation:", rand_allocation[1])
     fitness, sum_max_loading = calculate_fitness(rand_allocation, net)
-    print(f"Test Allocation: {rand_allocation}, Fitness: {fitness}, Sum Max Loading: {sum_max_loading}")
+    print(f"Fitness: {fitness}, Sum Max Loading: {sum_max_loading}")
 
-    """
+    
     # Genetic Algorithm Execution
     print("\n========================================================")
     print("=== Distribution Grid Genetic Algorithm Optimization ===")
@@ -257,7 +314,7 @@ def main():
     # --- 2. Create Initial Population ---
     print("Creating initial population...")
     # Use the base allocation as one member of the initial population
-    population = create_initial_population()
+    population = create_initial_population(base_allocation)
 
     # --- 3. Run the Evolution Loop ---
     for gen in range(NUM_GENERATIONS):
@@ -308,7 +365,7 @@ def main():
                 child = ordered_crossover(parent1, parent2)
             else:
                 # 3. No crossover, just clone parent1
-                child = parent1.copy()
+                child = parent1
 
             # 4. Mutation - randomly mutate the child
             if random.random() < MUTATION_RATE:
@@ -324,9 +381,10 @@ def main():
     print("\n===============================================")
     print("=== Genetic Algorithm Optimization Complete ===")
     print("===============================================")
-    print(f"Final best loading found: {overall_best_loading:.2f}%")
-    print(f"Optimal allocation: {overall_best_allocation}")
-    """
+    print(f"Final sum of max loadings: {overall_best_loading:.2f}%")
+    print(f"Load Allocation: {overall_best_allocation[0]}")
+    print(f"Generation Allocation: {overall_best_allocation[1]}")
+    
 
 if __name__ == "__main__":
     main()
