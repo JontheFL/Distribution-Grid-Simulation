@@ -21,14 +21,17 @@ sys.path.insert(0, os.path.abspath('..'))
 from multiprocessing import Pool, cpu_count
 from functools import partial
 import argparse
+import json
+import datetime
+import time
 
 # --- GA Configuration ---
 # "tune" these parameters to get better results
 NUM_PROFILES = 17           # DO NOT CHANGE: number of load/generation nodes
-POPULATION_SIZE = 10         # number of allocations to test in each generation
-NUM_GENERATIONS = 10         # number of times to evolve the population
-TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
-MUTATION_RATE = 0.1          # 10% chance an allocation will be randomly mutated
+POPULATION_SIZE = 12         # number of allocations to test in each generation
+NUM_GENERATIONS = 5         # number of times to evolve the population
+TOURNAMENT_SIZE = 4          # how many allocations "compete" to be a parent
+MUTATION_RATE = 0.1          # 5% chance an allocation will be randomly mutated
 CROSSOVER_RATE = 0.9         # 90% chance parents will "breed" (vs. just cloning)
 
 # --- Global Data (loaded once) ---
@@ -55,8 +58,8 @@ def create_grid_B():
     # create bus elements (use the first few buses as examples)
     pp.create_ext_grid(net, bus=buses[0], vm_pu=1.02, name="Grid Connection")
     for i in range(1, 18):
-        pp.create_load(net, bus=buses[i], p_mw=0.1, q_mvar=0.005, name=f"Load {i}")
-        pp.create_sgen(net, bus=buses[i], p_mw=0.1, q_mvar=0.005, name=f"Sgen {i}")
+        pp.create_load(net, bus=buses[i], p_mw=0.1, q_mvar=0.005, name=f"Load {i}")# type: ignore
+        pp.create_sgen(net, bus=buses[i], p_mw=0.1, q_mvar=0.005, name=f"Sgen {i}")# type: ignore
 
 
     # create branch elements
@@ -85,7 +88,7 @@ def get_base_indices(net) -> tuple[list[int], list[int]]:
     if len(index_order_load) != NUM_PROFILES or len(index_order_gen) != NUM_PROFILES:
         print(f"ERROR: Grid must have exactly {NUM_PROFILES} load/generation nodes.")
     
-    return tuple([index_order_load, index_order_gen])
+    return tuple([index_order_load, index_order_gen]) # type: ignore
 
 # --- 2. Fitness Function ---
 def calculate_fitness(allocation: tuple[list[int], list[int]], net) -> tuple[float, float]:
@@ -150,15 +153,68 @@ def create_random_allocation() -> tuple[list[int], list[int]]:
     """
     index_order_load = random.sample(range(NUM_PROFILES), NUM_PROFILES)
     index_order_gen = random.sample(range(NUM_PROFILES), NUM_PROFILES)
-    return tuple([index_order_load, index_order_gen])
+    return tuple([index_order_load, index_order_gen]) # type: ignore
+
+
+def construct_round_robin_seed() -> tuple[list[int], list[int]]:
+    """
+    Construct a greedy round-robin seed allocation.
+    Strategy:
+    - Compute a simple exporter score per household (peak generation minus load).
+    - Sort households by descending exporter score (big exporters first).
+    - Spread them across bus positions using an even-odd interleaving (0,2,4...,1,3,5...) to avoid clustering.
+    Returns a tuple (load_order, gen_order) where both lists assign the same household to the same bus.
+    """
+    if GEN_DATA_ORIGINAL is None or LOAD_DATA_ORIGINAL is None:
+        # Fallback to random allocation if data not available
+        return create_random_allocation()
+
+    # Compute net export time series (generation - load) and take peak export per household
+    net_export = (GEN_DATA_ORIGINAL - LOAD_DATA_ORIGINAL)
+    # peak export magnitude per household (MW)
+    peak_export = net_export.max(axis=0)
+
+    # Sort households by peak export descending; columns are assumed to be 0..NUM_PROFILES-1
+    try:
+        households = list(peak_export.sort_values(ascending=False).index.astype(int))
+    except Exception:
+        # Fallback: use column positions
+        households = list(range(NUM_PROFILES))
+
+    # Position order: interleave evens then odds to spread similar households
+    pos_order = list(range(0, NUM_PROFILES, 2)) + list(range(1, NUM_PROFILES, 2))
+
+    allocation = [None] * NUM_PROFILES
+    for i, h in enumerate(households):
+        pos = pos_order[i]
+        allocation[pos] = int(h)# type: ignore
+
+    # If any slots remain (shouldn't), fill them with remaining household indices
+    remaining = [h for h in range(NUM_PROFILES) if h not in allocation]
+    for i in range(NUM_PROFILES):
+        if allocation[i] is None:
+            allocation[i] = remaining.pop(0)# type: ignore
+
+    # Use same assignment for loads and gens (household i assigned to bus allocation.index(i))
+    return (allocation.copy(), allocation.copy())# type: ignore
 
 def create_initial_population(base_allocation: tuple[list[int], list[int]]) -> list[tuple[list[int], list[int]]]:
     """
     Creates the initial population of allocations.
     """
-    # Start with the base allocation
-    population = [base_allocation]
-    for _ in range(POPULATION_SIZE - 1):
+    # Start with the base allocation (keep original behavior without deepcopy)
+    population: list[tuple[list[int], list[int]]] = [base_allocation]
+
+    # Add a greedy round-robin seed to give the GA a smarter starting point
+    try:
+        greedy_seed = construct_round_robin_seed()
+        population.append(greedy_seed)
+    except Exception:
+        # If anything goes wrong, fall back to a random allocation
+        population.append(create_random_allocation())
+
+    # Fill the remainder with random allocations
+    for _ in range(POPULATION_SIZE - len(population)):
         population.append(create_random_allocation())
     return population
 
@@ -169,8 +225,8 @@ def tournament_selection(population: list[tuple[list[int], list[int]]], fitnesse
     2. Find the one with the highest fitness.
     3. Return that allocation as the selected parent.
     """
-    # Select random indices for the tournament
-    tournament_indices = random.sample(range(POPULATION_SIZE), TOURNAMENT_SIZE)
+    # Select random indices for the tournament (use actual population length)
+    tournament_indices = random.sample(range(len(population)), TOURNAMENT_SIZE)
 
     # Get the allocations and their fitnesses
     tournament_allocations = [population[i] for i in tournament_indices]
@@ -195,8 +251,8 @@ def ordered_crossover(parent1_tuple: tuple[list[int], list[int]], parent2_tuple:
     start, end = sorted(random.sample(range(NUM_PROFILES), 2))
 
     # 2. Copy the "slice" from parent1 to the child
-    child_tuple[0][start:end] = parent1_tuple[0][start:end]
-    child_tuple[1][start:end] = parent1_tuple[1][start:end]
+    child_tuple[0][start:end] = parent1_tuple[0][start:end] # type: ignore
+    child_tuple[1][start:end] = parent1_tuple[1][start:end]# type: ignore
 
     # 3. Get the list of items not in the slice, in order from parent2
     parent2_items_load = [item for item in parent2_tuple[0] if item not in child_tuple[0]]
@@ -208,17 +264,17 @@ def ordered_crossover(parent1_tuple: tuple[list[int], list[int]], parent2_tuple:
     idx = 0
     for i in range(NUM_PROFILES):
         if child_tuple[0][i] is None:
-            child_tuple[0][i] = parent2_items_load[idx]
+            child_tuple[0][i] = parent2_items_load[idx]# type: ignore
             idx += 1
     
     idx = 0
     # for generation allocation
     for i in range(NUM_PROFILES):
         if child_tuple[1][i] is None:
-            child_tuple[1][i] = parent2_items_gen[idx]
+            child_tuple[1][i] = parent2_items_gen[idx]# type: ignore
             idx += 1
 
-    return child_tuple
+    return child_tuple# type: ignore
 
 def swap_mutation(allocation: tuple[list[int], list[int]]) -> tuple[list[int], list[int]]:
     """
@@ -226,13 +282,17 @@ def swap_mutation(allocation: tuple[list[int], list[int]]) -> tuple[list[int], l
     1. Pick two random indices.
     2. Swap the values at those indices.
     """
-    # Get two random indices to swap
+    # Operate on copies to avoid mutating the parent allocation in-place
     idx1, idx2 = random.sample(range(NUM_PROFILES), 2)
 
-    # Swap the values at those indices
-    allocation[0][idx1], allocation[0][idx2] = allocation[0][idx2], allocation[0][idx1]
-    allocation[1][idx1], allocation[1][idx2] = allocation[1][idx2], allocation[1][idx1]
-    return allocation
+    new_load = allocation[0].copy()
+    new_gen = allocation[1].copy()
+
+    # Swap the values at those indices on the copies
+    new_load[idx1], new_load[idx2] = new_load[idx2], new_load[idx1]
+    new_gen[idx1], new_gen[idx2] = new_gen[idx2], new_gen[idx1]
+
+    return (new_load, new_gen)
 
 def eval_allocation_wrapper(allocation: tuple[list[int], list[int]], calculate_fitness, net) -> tuple[float, float]:
     """
@@ -263,7 +323,24 @@ def main():
                         help=f"Number of generations to run the algorithm. Default is {NUM_GENERATIONS}."
                         )
 
+
+    # Optional: reproducibility seed and single-threaded debug mode
+    parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducible runs")
+    parser.add_argument("--no_parallel", action="store_true", help="Run evaluations single-threaded (no multiprocessing)")
+
+    # Re-parse to include the new args (safe because defaults are provided)
     args = parser.parse_args()
+
+    # Apply seed if provided
+    # If no seed provided, generate one and record it so runs are reproducible
+    if args.seed is None:
+        gen_seed = random.randint(0, 2**31 - 1)
+        args.seed = int(gen_seed)
+        print(f"No seed provided. Generated seed: {args.seed}")
+
+    # Seed RNGs (use the provided or generated seed)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
 
     # Update global GA parameters based on parsed arguments
     POPULATION_SIZE = args.num_pop
@@ -311,10 +388,28 @@ def main():
         net=net
     )
 
+    # Prepare logging for this run
+    gen_logs = []
+    run_start = time.time()
+
     # --- 2. Create Initial Population ---
     print("Creating initial population...")
     # Use the base allocation as one member of the initial population
     population = create_initial_population(base_allocation)
+
+    # Diagnostic: show the first few members of the initial population (base, greedy seed, ...)
+    try:
+        print("Initial population preview (first 3):")
+        for i, alloc in enumerate(population[:3]):
+            print(f"  member {i}: Load order: {alloc[0]}\n            Gen order: {alloc[1]}")
+
+        # If a greedy seed is present at index 1, evaluate and print its fitness
+        if len(population) > 1:
+            print("Evaluating greedy seed (initial population member 1):")
+            g_fitness, g_sum = calculate_fitness(population[1], net)
+            print(f"Greedy seed fitness: {g_fitness}, Sum Max Loading: {g_sum}")
+    except Exception as e:
+        print(f"Warning: could not display/evaluate initial population preview: {e}")
 
     # --- 3. Run the Evolution Loop ---
     for gen in range(NUM_GENERATIONS):
@@ -326,8 +421,12 @@ def main():
         # This 'with' block creates a pool of worker processes
         # It automaticalls maps the 'eval_wrapper_with_args' function to each allocation
         # in the 'population' list across multiple CPU cores
-        with Pool(processes=cpu_count()) as pool:
-            results = pool.map(eval_wrapper_with_args, population)
+        if getattr(args, 'no_parallel', False):
+            # Single-threaded evaluation (useful for debugging / reproducibility)
+            results = [eval_wrapper_with_args(alloc) for alloc in population]
+        else:
+            with Pool(processes=cpu_count()) as pool:
+                results = pool.map(eval_wrapper_with_args, population)
 
         # Later : parallelize this step
         # results = [calculate_fitness(allocation, net) for allocation in population]
@@ -342,6 +441,18 @@ def main():
         best_gen_loading = loadings[best_gen_index]
 
         print(f"Best Allocation: {best_gen_allocation}, Fitness: {best_gen_fitness}, Max Loading: {best_gen_loading}")
+
+        # Record generation statistics
+        gen_stat = {
+            'generation': gen + 1,
+            'best_fitness': float(best_gen_fitness),
+            'best_loading': float(best_gen_loading),
+            'mean_fitness': float(np.mean(fitnesses)),
+            'median_fitness': float(np.median(fitnesses)),
+            'worst_fitness': float(np.min(fitnesses)),
+            'best_allocation': best_gen_allocation
+        }
+        gen_logs.append(gen_stat)
 
         # -- 3c. Update overall best solution ---
         if best_gen_loading < overall_best_loading:
@@ -382,9 +493,37 @@ def main():
     print("=== Genetic Algorithm Optimization Complete ===")
     print("===============================================")
     print(f"Final sum of max loadings: {overall_best_loading:.2f}%")
-    print(f"Load Allocation: {overall_best_allocation[0]}")
-    print(f"Generation Allocation: {overall_best_allocation[1]}")
-    
+    print(f"Load Allocation: {overall_best_allocation[0]}")# type: ignore
+    print(f"Generation Allocation: {overall_best_allocation[1]}")# type: ignore
+    run_end = time.time()
+
+    # Save a run summary for reproducibility / analysis
+    timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_summary = {
+        'timestamp': timestamp_str,
+        'seed': getattr(args, 'seed', None),
+        'pop_size': POPULATION_SIZE,
+        'num_generations': NUM_GENERATIONS,
+        'mutation_rate': MUTATION_RATE,
+        'crossover_rate': CROSSOVER_RATE,
+        'tournament_size': TOURNAMENT_SIZE,
+        'no_parallel': bool(getattr(args, 'no_parallel', False)),
+        'overall_best_loading': float(overall_best_loading),
+        'overall_best_allocation': overall_best_allocation,
+        'generation_logs': gen_logs,
+        'runtime_seconds': run_end - run_start
+    }
+
+    try:
+        out_dir = "GA Runs"
+        # create target folder if it doesn't exist
+        os.makedirs(out_dir, exist_ok=True)
+        out_file = os.path.join(out_dir, f"ga_run_{timestamp_str}.json")
+        with open(out_file, 'w') as fh:
+            json.dump(run_summary, fh, indent=2)
+        print(f"Run summary written to: {out_file}")
+    except Exception as e:
+        print(f"Warning: could not write run summary: {e}")
 
 if __name__ == "__main__":
     main()
