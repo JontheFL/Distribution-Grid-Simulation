@@ -58,8 +58,8 @@ def create_grid_B():
     # create bus elements (use the first few buses as examples)
     pp.create_ext_grid(net, bus=buses[0], vm_pu=1.02, name="Grid Connection")
     for i in range(1, 18):
-        pp.create_load(net, bus=buses[i], p_mw=0.1, q_mvar=0.005, name=f"Load {i}")
-        pp.create_sgen(net, bus=buses[i], p_mw=0.1, q_mvar=0.005, name=f"Sgen {i}")
+        pp.create_load(net, bus=buses[i], p_mw=0.1, q_mvar=0.005, name=f"Load {i}")# type: ignore
+        pp.create_sgen(net, bus=buses[i], p_mw=0.1, q_mvar=0.005, name=f"Sgen {i}")# type: ignore
 
 
     # create branch elements
@@ -88,7 +88,7 @@ def get_base_indices(net) -> tuple[list[int], list[int]]:
     if len(index_order_load) != NUM_PROFILES or len(index_order_gen) != NUM_PROFILES:
         print(f"ERROR: Grid must have exactly {NUM_PROFILES} load/generation nodes.")
     
-    return tuple([index_order_load, index_order_gen])
+    return tuple([index_order_load, index_order_gen]) # type: ignore
 
 # --- 2. Fitness Function ---
 def calculate_fitness(allocation: tuple[list[int], list[int]], net) -> tuple[float, float]:
@@ -153,7 +153,7 @@ def create_random_allocation() -> tuple[list[int], list[int]]:
     """
     index_order_load = random.sample(range(NUM_PROFILES), NUM_PROFILES)
     index_order_gen = random.sample(range(NUM_PROFILES), NUM_PROFILES)
-    return tuple([index_order_load, index_order_gen])
+    return tuple([index_order_load, index_order_gen]) # type: ignore
 
 
 def construct_round_robin_seed() -> tuple[list[int], list[int]]:
@@ -187,16 +187,16 @@ def construct_round_robin_seed() -> tuple[list[int], list[int]]:
     allocation = [None] * NUM_PROFILES
     for i, h in enumerate(households):
         pos = pos_order[i]
-        allocation[pos] = int(h)
+        allocation[pos] = int(h)# type: ignore
 
     # If any slots remain (shouldn't), fill them with remaining household indices
     remaining = [h for h in range(NUM_PROFILES) if h not in allocation]
     for i in range(NUM_PROFILES):
         if allocation[i] is None:
-            allocation[i] = remaining.pop(0)
+            allocation[i] = remaining.pop(0)# type: ignore
 
     # Use same assignment for loads and gens (household i assigned to bus allocation.index(i))
-    return (allocation.copy(), allocation.copy())
+    return (allocation.copy(), allocation.copy())# type: ignore
 
 def create_initial_population(base_allocation: tuple[list[int], list[int]]) -> list[tuple[list[int], list[int]]]:
     """
@@ -251,8 +251,8 @@ def ordered_crossover(parent1_tuple: tuple[list[int], list[int]], parent2_tuple:
     start, end = sorted(random.sample(range(NUM_PROFILES), 2))
 
     # 2. Copy the "slice" from parent1 to the child
-    child_tuple[0][start:end] = parent1_tuple[0][start:end]
-    child_tuple[1][start:end] = parent1_tuple[1][start:end]
+    child_tuple[0][start:end] = parent1_tuple[0][start:end] # type: ignore
+    child_tuple[1][start:end] = parent1_tuple[1][start:end]# type: ignore
 
     # 3. Get the list of items not in the slice, in order from parent2
     parent2_items_load = [item for item in parent2_tuple[0] if item not in child_tuple[0]]
@@ -264,17 +264,17 @@ def ordered_crossover(parent1_tuple: tuple[list[int], list[int]], parent2_tuple:
     idx = 0
     for i in range(NUM_PROFILES):
         if child_tuple[0][i] is None:
-            child_tuple[0][i] = parent2_items_load[idx]
+            child_tuple[0][i] = parent2_items_load[idx]# type: ignore
             idx += 1
     
     idx = 0
     # for generation allocation
     for i in range(NUM_PROFILES):
         if child_tuple[1][i] is None:
-            child_tuple[1][i] = parent2_items_gen[idx]
+            child_tuple[1][i] = parent2_items_gen[idx]# type: ignore
             idx += 1
 
-    return child_tuple
+    return child_tuple# type: ignore
 
 def swap_mutation(allocation: tuple[list[int], list[int]]) -> tuple[list[int], list[int]]:
     """
@@ -323,7 +323,6 @@ def main():
                         help=f"Number of generations to run the algorithm. Default is {NUM_GENERATIONS}."
                         )
 
-    args = parser.parse_args()
 
     # Optional: reproducibility seed and single-threaded debug mode
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducible runs")
@@ -333,9 +332,15 @@ def main():
     args = parser.parse_args()
 
     # Apply seed if provided
-    if args.seed is not None:
-        random.seed(args.seed)
-        np.random.seed(args.seed)
+    # If no seed provided, generate one and record it so runs are reproducible
+    if args.seed is None:
+        gen_seed = random.randint(0, 2**31 - 1)
+        args.seed = int(gen_seed)
+        print(f"No seed provided. Generated seed: {args.seed}")
+
+    # Seed RNGs (use the provided or generated seed)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
 
     # Update global GA parameters based on parsed arguments
     POPULATION_SIZE = args.num_pop
@@ -488,8 +493,8 @@ def main():
     print("=== Genetic Algorithm Optimization Complete ===")
     print("===============================================")
     print(f"Final sum of max loadings: {overall_best_loading:.2f}%")
-    print(f"Load Allocation: {overall_best_allocation[0]}")
-    print(f"Generation Allocation: {overall_best_allocation[1]}")
+    print(f"Load Allocation: {overall_best_allocation[0]}")# type: ignore
+    print(f"Generation Allocation: {overall_best_allocation[1]}")# type: ignore
     run_end = time.time()
 
     # Save a run summary for reproducibility / analysis
