@@ -30,7 +30,7 @@ import time
 NUM_PROFILES = 17           # DO NOT CHANGE: number of load/generation nodes
 POPULATION_SIZE = 12         # number of allocations to test in each generation
 NUM_GENERATIONS = 5         # number of times to evolve the population
-TOURNAMENT_SIZE = 5          # how many allocations "compete" to be a parent
+TOURNAMENT_SIZE = 4          # how many allocations "compete" to be a parent
 MUTATION_RATE = 0.1          # 5% chance an allocation will be randomly mutated
 CROSSOVER_RATE = 0.9         # 90% chance parents will "breed" (vs. just cloning)
 
@@ -515,7 +515,10 @@ def main():
     }
 
     try:
-        out_file = f"ga_run_{timestamp_str}.json"
+        out_dir = "GA Runs"
+        # create target folder if it doesn't exist
+        os.makedirs(out_dir, exist_ok=True)
+        out_file = os.path.join(out_dir, f"ga_run_{timestamp_str}.json")
         with open(out_file, 'w') as fh:
             json.dump(run_summary, fh, indent=2)
         print(f"Run summary written to: {out_file}")

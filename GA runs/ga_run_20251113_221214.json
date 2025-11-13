@@ -1,5 +1,5 @@
 {
-  "timestamp": "20251113_215314",
+  "timestamp": "20251113_221214",
   "seed": 1028145875,
   "pop_size": 12,
   "num_generations": 5,
@@ -7,16 +7,16 @@
   "crossover_rate": 0.9,
   "tournament_size": 5,
   "no_parallel": true,
-  "overall_best_loading": 83.1946574047976,
+  "overall_best_loading": 85.28228437791671,
   "overall_best_allocation": [
     [
       15,
       13,
       11,
+      5,
       6,
       16,
       8,
-      3,
       4,
       14,
       1,
@@ -24,18 +24,18 @@
       7,
       10,
       0,
-      5,
+      3,
       12,
       2
     ],
     [
       12,
-      11,
-      6,
-      14,
       13,
+      11,
       9,
       7,
+      6,
+      14,
       2,
       8,
       1,
@@ -51,11 +51,11 @@
   "generation_logs": [
     {
       "generation": 1,
-      "best_fitness": 0.011302091688451624,
-      "best_loading": 88.47919726414811,
-      "mean_fitness": 0.010143554523299247,
-      "median_fitness": 0.01022474181914704,
-      "worst_fitness": 0.008009263886496759,
+      "best_fitness": 0.011302091688451631,
+      "best_loading": 88.47919726414806,
+      "mean_fitness": 0.010143554523299307,
+      "median_fitness": 0.010224741819148349,
+      "worst_fitness": 0.00800926388649687,
       "best_allocation": [
         [
           15,
@@ -99,11 +99,11 @@
     },
     {
       "generation": 2,
-      "best_fitness": 0.011361557129999101,
-      "best_loading": 88.0161045319744,
-      "mean_fitness": 0.010877085208055281,
-      "median_fitness": 0.011093865478176968,
-      "worst_fitness": 0.009747064091403013,
+      "best_fitness": 0.011361557129999885,
+      "best_loading": 88.01610453196832,
+      "mean_fitness": 0.01064588746535256,
+      "median_fitness": 0.01065905472359292,
+      "worst_fitness": 0.00909218780897506,
       "best_allocation": [
         [
           15,
@@ -147,11 +147,11 @@
     },
     {
       "generation": 3,
-      "best_fitness": 0.011582846421906766,
-      "best_loading": 86.33456437000571,
-      "mean_fitness": 0.011160707424671587,
-      "median_fitness": 0.011352519360329955,
-      "worst_fitness": 0.009872275941925948,
+      "best_fitness": 0.011582846421906315,
+      "best_loading": 86.33456437000908,
+      "mean_fitness": 0.010770736081891058,
+      "median_fitness": 0.010755604816370154,
+      "worst_fitness": 0.00987227594192519,
       "best_allocation": [
         [
           15,
@@ -195,11 +195,11 @@
     },
     {
       "generation": 4,
-      "best_fitness": 0.011725764703589072,
-      "best_loading": 85.28228437791488,
-      "mean_fitness": 0.011451429683088309,
-      "median_fitness": 0.01154597495507735,
-      "worst_fitness": 0.01102711031494827,
+      "best_fitness": 0.01172576470358882,
+      "best_loading": 85.28228437791671,
+      "mean_fitness": 0.010825979168720067,
+      "median_fitness": 0.010920464945352414,
+      "worst_fitness": 0.00955075612190009,
       "best_allocation": [
         [
           15,
@@ -243,20 +243,20 @@
     },
     {
       "generation": 5,
-      "best_fitness": 0.012020002620292453,
-      "best_loading": 83.1946574047976,
-      "mean_fitness": 0.011605586767882405,
-      "median_fitness": 0.01166679833263556,
-      "worst_fitness": 0.011066716899792267,
+      "best_fitness": 0.01172576470358882,
+      "best_loading": 85.28228437791671,
+      "mean_fitness": 0.011446038015096126,
+      "median_fitness": 0.011556029928525773,
+      "worst_fitness": 0.010824474410621244,
       "best_allocation": [
         [
           15,
           13,
           11,
+          5,
           6,
           16,
           8,
-          3,
           4,
           14,
           1,
@@ -264,18 +264,18 @@
           7,
           10,
           0,
-          5,
+          3,
           12,
           2
         ],
         [
           12,
-          11,
-          6,
-          14,
           13,
+          11,
           9,
           7,
+          6,
+          14,
           2,
           8,
           1,
@@ -290,5 +290,5 @@
       ]
     }
   ],
-  "runtime_seconds": 85.84347152709961
+  "runtime_seconds": 112.48711824417114
 }
