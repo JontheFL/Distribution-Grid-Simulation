@@ -1,0 +1,99 @@
+84.99%
+NUM_PROFILES = 17           # DO NOT CHANGE: number of load/generation nodes
+POPULATION_SIZE = 10         # number of allocations to test in each generation
+NUM_GENERATIONS = 10         # number of times to evolve the population
+TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
+MUTATION_RATE = 0.1          # 10% chance an allocation will be randomly mutated
+CROSSOVER_RATE = 0.9
+
+
+88.66%
+NUM_PROFILES = 17           # DO NOT CHANGE: number of load/generation nodes
+POPULATION_SIZE = 5         # number of allocations to test in each generation
+NUM_GENERATIONS = 6         # number of times to evolve the population
+TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
+MUTATION_RATE = 0.1          # 10% chance an allocation will be randomly mutated
+CROSSOVER_RATE = 0.9
+
+
+83.44%
+NUM_PROFILES = 17           # DO NOT CHANGE: number of load/generation nodes
+POPULATION_SIZE = 20         # number of allocations to test in each generation
+NUM_GENERATIONS = 6         # number of times to evolve the population
+TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
+MUTATION_RATE = 0.1          # 10% chance an allocation will be randomly mutated
+CROSSOVER_RATE = 0.9
+
+
+88.01%
+NUM_PROFILES = 17           # DO NOT CHANGE: number of load/generation nodes
+POPULATION_SIZE = 5         # number of allocations to test in each generation
+NUM_GENERATIONS = 20         # number of times to evolve the population
+TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
+MUTATION_RATE = 0.1          # 10% chance an allocation will be randomly mutated
+CROSSOVER_RATE = 0.9
+
+
+84.89%
+NUM_PROFILES = 17           # DO NOT CHANGE: number of load/generation nodes
+POPULATION_SIZE = 40         # number of allocations to test in each generation
+NUM_GENERATIONS = 5         # number of times to evolve the population
+TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
+MUTATION_RATE = 0.1          # 10% chance an allocation will be randomly mutated
+CROSSOVER_RATE = 0.9
+
+
+83.79%
+NUM_PROFILES = 17           # DO NOT CHANGE: number of load/generation nodes
+POPULATION_SIZE = 40         # number of allocations to test in each generation
+NUM_GENERATIONS = 6         # number of times to evolve the population
+TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
+MUTATION_RATE = 0.1          # 10% chance an allocation will be randomly mutated
+CROSSOVER_RATE = 0.9
+
+
+83.43%
+NUM_PROFILES = 17           # DO NOT CHANGE: number of load/generation nodes
+POPULATION_SIZE = 20         # number of allocations to test in each generation
+NUM_GENERATIONS = 6         # number of times to evolve the population
+TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
+MUTATION_RATE = 0.05          # 5% chance an allocation will be randomly mutated
+CROSSOVER_RATE = 0.9         # 90% chance parents will "breed" (vs. just cloning)
+
+
+84.66%
+NUM_PROFILES = 17           # DO NOT CHANGE: number of load/generation nodes
+POPULATION_SIZE = 20         # number of allocations to test in each generation
+NUM_GENERATIONS = 6         # number of times to evolve the population
+TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
+MUTATION_RATE = 0.05          # 5% chance an allocation will be randomly mutated
+CROSSOVER_RATE = 0.8         # 90% chance parents will "breed" (vs. just cloning)
+
+
+87.27%
+NUM_PROFILES = 17           # DO NOT CHANGE: number of load/generation nodes
+POPULATION_SIZE = 17         # number of allocations to test in each generation
+NUM_GENERATIONS = 10         # number of times to evolve the population
+TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
+MUTATION_RATE = 0.15          # 15% chance an allocation will be randomly mutated
+CROSSOVER_RATE = 0.85         # 85% chance parents will "breed" (vs. just cloning)
+
+
+best start so far: 83.12%
+Load Allocation: [12, 16, 9, 13, 11, 5, 4, 10, 0, 15, 14, 8, 7, 6, 2, 1, 3]
+Generation Allocation: [13, 3, 2, 11, 14, 4, 15, 8, 10, 0, 12, 9, 1, 16, 7, 6, 5] 
+with
+NUM_PROFILES = 17           # DO NOT CHANGE: number of load/generation nodes
+POPULATION_SIZE = 20         # number of allocations to test in each generation
+NUM_GENERATIONS = 6         # number of times to evolve the population
+TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
+MUTATION_RATE = 0.1          # 5% chance an allocation will be randomly mutated
+CROSSOVER_RATE = 0.9         # 90% chance parents will "breed" (vs. just cloning)
+
+
+NEW BEST 82.74%
+POPULATION_SIZE = 20         
+NUM_GENERATIONS = 10         
+TOURNAMENT_SIZE = 3          
+MUTATION_RATE = 0.1          
+CROSSOVER_RATE = 0.9

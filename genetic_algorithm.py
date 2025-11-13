@@ -25,10 +25,10 @@ import argparse
 # --- GA Configuration ---
 # "tune" these parameters to get better results
 NUM_PROFILES = 17           # DO NOT CHANGE: number of load/generation nodes
-POPULATION_SIZE = 10         # number of allocations to test in each generation
-NUM_GENERATIONS = 10         # number of times to evolve the population
+POPULATION_SIZE = 12         # number of allocations to test in each generation
+NUM_GENERATIONS = 5         # number of times to evolve the population
 TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
-MUTATION_RATE = 0.1          # 10% chance an allocation will be randomly mutated
+MUTATION_RATE = 0.1          # 5% chance an allocation will be randomly mutated
 CROSSOVER_RATE = 0.9         # 90% chance parents will "breed" (vs. just cloning)
 
 # --- Global Data (loaded once) ---
@@ -152,13 +152,66 @@ def create_random_allocation() -> tuple[list[int], list[int]]:
     index_order_gen = random.sample(range(NUM_PROFILES), NUM_PROFILES)
     return tuple([index_order_load, index_order_gen])
 
+
+def construct_round_robin_seed() -> tuple[list[int], list[int]]:
+    """
+    Construct a greedy round-robin seed allocation.
+    Strategy:
+    - Compute a simple exporter score per household (peak generation minus load).
+    - Sort households by descending exporter score (big exporters first).
+    - Spread them across bus positions using an even-odd interleaving (0,2,4...,1,3,5...) to avoid clustering.
+    Returns a tuple (load_order, gen_order) where both lists assign the same household to the same bus.
+    """
+    if GEN_DATA_ORIGINAL is None or LOAD_DATA_ORIGINAL is None:
+        # Fallback to random allocation if data not available
+        return create_random_allocation()
+
+    # Compute net export time series (generation - load) and take peak export per household
+    net_export = (GEN_DATA_ORIGINAL - LOAD_DATA_ORIGINAL)
+    # peak export magnitude per household (MW)
+    peak_export = net_export.max(axis=0)
+
+    # Sort households by peak export descending; columns are assumed to be 0..NUM_PROFILES-1
+    try:
+        households = list(peak_export.sort_values(ascending=False).index.astype(int))
+    except Exception:
+        # Fallback: use column positions
+        households = list(range(NUM_PROFILES))
+
+    # Position order: interleave evens then odds to spread similar households
+    pos_order = list(range(0, NUM_PROFILES, 2)) + list(range(1, NUM_PROFILES, 2))
+
+    allocation = [None] * NUM_PROFILES
+    for i, h in enumerate(households):
+        pos = pos_order[i]
+        allocation[pos] = int(h)
+
+    # If any slots remain (shouldn't), fill them with remaining household indices
+    remaining = [h for h in range(NUM_PROFILES) if h not in allocation]
+    for i in range(NUM_PROFILES):
+        if allocation[i] is None:
+            allocation[i] = remaining.pop(0)
+
+    # Use same assignment for loads and gens (household i assigned to bus allocation.index(i))
+    return (allocation.copy(), allocation.copy())
+
 def create_initial_population(base_allocation: tuple[list[int], list[int]]) -> list[tuple[list[int], list[int]]]:
     """
     Creates the initial population of allocations.
     """
-    # Start with the base allocation
-    population = [base_allocation]
-    for _ in range(POPULATION_SIZE - 1):
+    # Start with the base allocation (keep original behavior without deepcopy)
+    population: list[tuple[list[int], list[int]]] = [base_allocation]
+
+    # Add a greedy round-robin seed to give the GA a smarter starting point
+    try:
+        greedy_seed = construct_round_robin_seed()
+        population.append(greedy_seed)
+    except Exception:
+        # If anything goes wrong, fall back to a random allocation
+        population.append(create_random_allocation())
+
+    # Fill the remainder with random allocations
+    for _ in range(POPULATION_SIZE - len(population)):
         population.append(create_random_allocation())
     return population
 
@@ -169,8 +222,8 @@ def tournament_selection(population: list[tuple[list[int], list[int]]], fitnesse
     2. Find the one with the highest fitness.
     3. Return that allocation as the selected parent.
     """
-    # Select random indices for the tournament
-    tournament_indices = random.sample(range(POPULATION_SIZE), TOURNAMENT_SIZE)
+    # Select random indices for the tournament (use actual population length)
+    tournament_indices = random.sample(range(len(population)), TOURNAMENT_SIZE)
 
     # Get the allocations and their fitnesses
     tournament_allocations = [population[i] for i in tournament_indices]
@@ -226,13 +279,17 @@ def swap_mutation(allocation: tuple[list[int], list[int]]) -> tuple[list[int], l
     1. Pick two random indices.
     2. Swap the values at those indices.
     """
-    # Get two random indices to swap
+    # Operate on copies to avoid mutating the parent allocation in-place
     idx1, idx2 = random.sample(range(NUM_PROFILES), 2)
 
-    # Swap the values at those indices
-    allocation[0][idx1], allocation[0][idx2] = allocation[0][idx2], allocation[0][idx1]
-    allocation[1][idx1], allocation[1][idx2] = allocation[1][idx2], allocation[1][idx1]
-    return allocation
+    new_load = allocation[0].copy()
+    new_gen = allocation[1].copy()
+
+    # Swap the values at those indices on the copies
+    new_load[idx1], new_load[idx2] = new_load[idx2], new_load[idx1]
+    new_gen[idx1], new_gen[idx2] = new_gen[idx2], new_gen[idx1]
+
+    return (new_load, new_gen)
 
 def eval_allocation_wrapper(allocation: tuple[list[int], list[int]], calculate_fitness, net) -> tuple[float, float]:
     """
@@ -315,6 +372,20 @@ def main():
     print("Creating initial population...")
     # Use the base allocation as one member of the initial population
     population = create_initial_population(base_allocation)
+
+    # Diagnostic: show the first few members of the initial population (base, greedy seed, ...)
+    try:
+        print("Initial population preview (first 3):")
+        for i, alloc in enumerate(population[:3]):
+            print(f"  member {i}: Load order: {alloc[0]}\n            Gen order: {alloc[1]}")
+
+        # If a greedy seed is present at index 1, evaluate and print its fitness
+        if len(population) > 1:
+            print("Evaluating greedy seed (initial population member 1):")
+            g_fitness, g_sum = calculate_fitness(population[1], net)
+            print(f"Greedy seed fitness: {g_fitness}, Sum Max Loading: {g_sum}")
+    except Exception as e:
+        print(f"Warning: could not display/evaluate initial population preview: {e}")
 
     # --- 3. Run the Evolution Loop ---
     for gen in range(NUM_GENERATIONS):
