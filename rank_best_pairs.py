@@ -4,11 +4,7 @@ from scipy.optimize import linear_sum_assignment
 import sys, os
 from pathlib import Path
 
-NUM_PROFILES = 17
-gen_data_path = Path("Data/GenerationData_B.csv")
-load_data_path = Path("Data/LoadData_B.csv")
-
-def rank_best_pairs(gen_data_path="Data/GenerationData_B.csv", load_data_path="Data/LoadData_B.csv", NUM_PROFILES: int = 17) -> list[tuple[int, int]]:
+def rank_best_pairs(gen_data_path, load_data_path, num_profiles) -> list[tuple[int, int]]:
     """
     Finds and ranks the best load-generation pairs based on minimizing peak net load.
     """
@@ -20,14 +16,14 @@ def rank_best_pairs(gen_data_path="Data/GenerationData_B.csv", load_data_path="D
         # Cost of pairing load i and gen j
         # Peak Net Load as cost metric
         # A lower cost is better
-        cost_matrix = np.zeros((NUM_PROFILES, NUM_PROFILES))
+        cost_matrix = np.zeros((num_profiles, num_profiles))
 
         # Create DataFrames for easier coumn access
-        load_df = load_data[[str(i) for i in range(NUM_PROFILES)]]
-        gen_df = gen_data[[str(j) for j in range(NUM_PROFILES)]]
+        load_df = load_data[[str(i) for i in range(num_profiles)]]
+        gen_df = gen_data[[str(j) for j in range(num_profiles)]]
 
-        for i in range(NUM_PROFILES):
-            for j in range(NUM_PROFILES):
+        for i in range(num_profiles):
+            for j in range(num_profiles):
                 # Calculate net load for specific load-gen pair
                 net_load = load_df[str(i)] - gen_df[str(j)]
 
@@ -62,9 +58,4 @@ def rank_best_pairs(gen_data_path="Data/GenerationData_B.csv", load_data_path="D
         return pairing_list
     except Exception as e:
         print("An error occurred:", e)
-
-if __name__ == "__main__":
-    pairs_ranked = rank_best_pairs(gen_data_path, load_data_path, NUM_PROFILES)
-    print("\nRanked List: Best to Worst Pairs")
-    print(pairs_ranked)
 

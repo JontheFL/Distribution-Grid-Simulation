@@ -34,11 +34,6 @@ TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
 MUTATION_RATE = 0.15          # 5% chance an allocation will be randomly mutated
 CROSSOVER_RATE = 0.9         # 90% chance parents will "breed" (vs. just cloning)
 
-# --- Global Data (loaded once) ---
-# load the load and generation profiles
-GEN_DATA_PATH = "Data/GenerationData_B.csv"
-LOAD_DATA_PATH = "Data/LoadData_B.csv"
-
 # --- 1. Pandapower Grid & Simulation ---
 def create_grid_B():
     """
@@ -88,13 +83,14 @@ def get_base_indices(net) -> tuple[list[int], list[int]]:
 # --- 2. Fitness Function ---
 def calculate_fitness(allocation: tuple[list[int], list[int]], 
                       net, 
-                      gen_data_path, 
-                      load_data_path
+                      gen_data_path="Data/GenerationData_B.csv", 
+                      load_data_path="Data/LoadData_B.csv"
                       ) -> tuple[float, float]:
     """
     This function takes an allocation and returns its
     fitness score (1 / sum_max_loading) and the sum_max_loading values.
     """
+    # Load the generation and load data
     gen_data = pd.read_csv(gen_data_path, index_col=0)
     load_data = pd.read_csv(load_data_path, index_col=0)
     try: 
@@ -113,27 +109,24 @@ def calculate_fitness(allocation: tuple[list[int], list[int]],
             index_order_gen=allocation[1],
             results_suffix=res_suffix,
         )
-
-        # 2. Read the results
-        res_file = os.path.join(res_path, "res_line", "loading_percent.csv")
         
-        # 3. Calculate the sum of maximum line loadings for each timestep
+        # 2. Calculate the sum of maximum line loadings for each timestep
         # max_loading = res_df.iloc[:, 1].max()
         sum_max_loading = res_lines.max(axis=1).sum() 
 
-        # 4. Confirm that no line is overloaded (> 100%)
+        # 3. Confirm that no line is overloaded (> 100%)
         if not all(res_lines.max(axis=1) <= 100):
             print(f"WARNING: Allocation {allocation} caused overload!")
             return 0.0, 99999.0 # Return very bad fitness and high loading
             
-        # 5. Clean up the results folder
+        # 4. Clean up the results folder
         try:
             import shutil
             shutil.rmtree(res_path)
         except Exception as e:
             print(f"ERROR: Could not delete results folder {res_path}: {e}")
 
-        # 6. Calculate fitness (minimize loading -> maximize fitness)
+        # 5. Calculate fitness (minimize loading -> maximize fitness)
         if sum_max_loading == 0:
             fitness = float('inf') # Avoid divistion by zero
         else:
@@ -155,7 +148,9 @@ def create_random_allocation() -> tuple[list[int], list[int]]:
     index_order_gen = random.sample(range(NUM_PROFILES), NUM_PROFILES)
     return tuple([index_order_load, index_order_gen]) # type: ignore
 
-def construct_round_robin_seed(gen_data_path, load_data_path) -> tuple[list[int], list[int]]:
+def construct_round_robin_seed(gen_data_path="Data/GenerationData_B.csv", 
+                               load_data_path="Data/LoadData_B.csv"
+                               ) -> tuple[list[int], list[int]]:
     """
     Construct a greedy round-robin seed allocation.
     Strategy:
@@ -197,7 +192,10 @@ def construct_round_robin_seed(gen_data_path, load_data_path) -> tuple[list[int]
     # Use same assignment for loads and gens (household i assigned to bus allocation.index(i))
     return (allocation.copy(), allocation.copy())# type: ignore
 
-def create_initial_population(base_allocation: tuple[list[int], list[int]]) -> list[tuple[list[int], list[int]]]:
+def create_initial_population(base_allocation: tuple[list[int], list[int]],
+                              gen_data_path="Data/GenerationData_B.csv",
+                              load_data_path="Data/LoadData_B.csv"
+                              ) -> list[tuple[list[int], list[int]]]:
     """
     Creates the initial population of allocations.
     """
@@ -206,7 +204,7 @@ def create_initial_population(base_allocation: tuple[list[int], list[int]]) -> l
 
     # Add a greedy round-robin seed to give the GA a smarter starting point
     try:
-        greedy_seed = construct_round_robin_seed(GEN_DATA_PATH, LOAD_DATA_PATH)
+        greedy_seed = construct_round_robin_seed(gen_data_path, load_data_path)
         population.append(greedy_seed)
     except Exception:
         # If anything goes wrong, fall back to a random allocation
@@ -217,7 +215,9 @@ def create_initial_population(base_allocation: tuple[list[int], list[int]]) -> l
         population.append(create_random_allocation())
     return population
 
-def tournament_selection(population: list[tuple[list[int], list[int]]], fitnesses: list[float]) -> tuple[list[int], list[int]]:
+def tournament_selection(population: list[tuple[list[int], list[int]]], 
+                         fitnesses: list[float]
+                         ) -> tuple[list[int], list[int]]:
     """
     Selects a parent allocation using tournament selection.
     1. Pick TOURNAMENT_SIZE random allocations from the population.
@@ -293,7 +293,12 @@ def swap_mutation(allocation: tuple[list[int], list[int]]) -> tuple[list[int], l
 
     return (new_load, new_gen)
 
-def eval_allocation_wrapper(allocation: tuple[list[int], list[int]], calculate_fitness, net, gen_data_path, load_data_path) -> tuple[float, float]:
+def eval_allocation_wrapper(allocation: tuple[list[int], list[int]], 
+                            calculate_fitness, 
+                            net, 
+                            gen_data_path = "Data/GenerationData_B.csv", 
+                            load_data_path = "Data/LoadData_B.csv"
+                            ) -> tuple[float, float]:
     """
     This is a wrapper function. The 'multiprocessing.Pool' 
     can only pass one argument to its worker function.
@@ -302,9 +307,12 @@ def eval_allocation_wrapper(allocation: tuple[list[int], list[int]], calculate_f
     """
     return calculate_fitness(allocation, net, gen_data_path, load_data_path)
 
-def run_genetic_algorithm(net): 
+def run_genetic_algorithm(net, 
+                          gen_data_path="Data/GenerationData_B.csv", 
+                          load_data_path="Data/LoadData_B.csv"): 
+    """
+    """
     global POPULATION_SIZE, NUM_GENERATIONS
-
     # --- Define Arguments Parser ---
     parser = argparse.ArgumentParser(description="A script to run genetic algorithm for distribution grid optimization.")
 
@@ -356,14 +364,14 @@ def run_genetic_algorithm(net):
     print("Load Allocation:", base_allocation[0])
     print("Generation Allocation:", base_allocation[1])
     print(base_allocation)
-    fitness, sum_max_loading = calculate_fitness(base_allocation, net, GEN_DATA_PATH, LOAD_DATA_PATH)
+    fitness, sum_max_loading = calculate_fitness(base_allocation, net, gen_data_path, load_data_path)
     print(f"Fitness: {fitness}, Sum Max Loading: {sum_max_loading}")
 
     print("\nRandom Allocation Test:")
     rand_allocation = create_random_allocation()
     print("Load Allocation:", rand_allocation[0])
     print("Generation Allocation:", rand_allocation[1])
-    fitness, sum_max_loading = calculate_fitness(rand_allocation, net, GEN_DATA_PATH, LOAD_DATA_PATH)
+    fitness, sum_max_loading = calculate_fitness(rand_allocation, net, gen_data_path, load_data_path)
     print(f"Fitness: {fitness}, Sum Max Loading: {sum_max_loading}")
 
     
@@ -385,8 +393,8 @@ def run_genetic_algorithm(net):
         eval_allocation_wrapper, 
         calculate_fitness=calculate_fitness,
         net=net, 
-        gen_data_path=GEN_DATA_PATH,
-        load_data_path=LOAD_DATA_PATH
+        gen_data_path=gen_data_path,
+        load_data_path=load_data_path
     )
 
     # Prepare logging for this run
@@ -407,7 +415,7 @@ def run_genetic_algorithm(net):
         # If a greedy seed is present at index 1, evaluate and print its fitness
         if len(population) > 1:
             print("Evaluating greedy seed (initial population member 1):")
-            g_fitness, g_sum = calculate_fitness(population[1], net, GEN_DATA_PATH, LOAD_DATA_PATH)
+            g_fitness, g_sum = calculate_fitness(population[1], net, gen_data_path, load_data_path)
             print(f"Greedy seed fitness: {g_fitness}, Sum Max Loading: {g_sum}")
     except Exception as e:
         print(f"Warning: could not display/evaluate initial population preview: {e}")
@@ -524,5 +532,9 @@ def run_genetic_algorithm(net):
         print(f"Warning: could not write run summary: {e}")
 
 if __name__ == "__main__":
+
     net = create_grid_B()
-    run_genetic_algorithm(net)
+    run_genetic_algorithm(net, 
+                          gen_data_path="Data/GenerationData_B.csv", 
+                          load_data_path="Data/LoadData_B.csv"
+                          )
