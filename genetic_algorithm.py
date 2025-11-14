@@ -36,13 +36,8 @@ CROSSOVER_RATE = 0.9         # 90% chance parents will "breed" (vs. just cloning
 
 # --- Global Data (loaded once) ---
 # load the load and generation profiles
-try: 
-    GEN_DATA_ORIGINAL = "Data/GenerationData_B.csv"
-    LOAD_DATA_ORIGINAL = "Data/LoadData_B.csv"
-except FileNotFoundError:
-    print("ERROR: Data files not found.")
-    GEN_DATA_ORIGINAL = None
-    LOAD_DATA_ORIGINAL = None
+GEN_DATA_PATH = "Data/GenerationData_B.csv"
+LOAD_DATA_PATH = "Data/LoadData_B.csv"
 
 # --- 1. Pandapower Grid & Simulation ---
 def create_grid_B():
@@ -174,7 +169,7 @@ def construct_round_robin_seed(gen_data_path, load_data_path) -> tuple[list[int]
         return create_random_allocation()
 
     # Compute net export time series (generation - load) and take peak export per household
-    net_export = (pd.read_csv(gen_data_path) - pd.read_csv(load_data_path))
+    net_export = (pd.read_csv(gen_data_path, index_col=0) - pd.read_csv(load_data_path, index_col=0))
     # peak export magnitude per household (MW)
     peak_export = net_export.max(axis=0)
 
@@ -211,7 +206,7 @@ def create_initial_population(base_allocation: tuple[list[int], list[int]]) -> l
 
     # Add a greedy round-robin seed to give the GA a smarter starting point
     try:
-        greedy_seed = construct_round_robin_seed(GEN_DATA_ORIGINAL, LOAD_DATA_ORIGINAL)
+        greedy_seed = construct_round_robin_seed(GEN_DATA_PATH, LOAD_DATA_PATH)
         population.append(greedy_seed)
     except Exception:
         # If anything goes wrong, fall back to a random allocation
@@ -361,14 +356,14 @@ def run_genetic_algorithm(net):
     print("Load Allocation:", base_allocation[0])
     print("Generation Allocation:", base_allocation[1])
     print(base_allocation)
-    fitness, sum_max_loading = calculate_fitness(base_allocation, net, GEN_DATA_ORIGINAL, LOAD_DATA_ORIGINAL)
+    fitness, sum_max_loading = calculate_fitness(base_allocation, net, GEN_DATA_PATH, LOAD_DATA_PATH)
     print(f"Fitness: {fitness}, Sum Max Loading: {sum_max_loading}")
 
     print("\nRandom Allocation Test:")
     rand_allocation = create_random_allocation()
     print("Load Allocation:", rand_allocation[0])
     print("Generation Allocation:", rand_allocation[1])
-    fitness, sum_max_loading = calculate_fitness(rand_allocation, net, GEN_DATA_ORIGINAL, LOAD_DATA_ORIGINAL)
+    fitness, sum_max_loading = calculate_fitness(rand_allocation, net, GEN_DATA_PATH, LOAD_DATA_PATH)
     print(f"Fitness: {fitness}, Sum Max Loading: {sum_max_loading}")
 
     
@@ -390,8 +385,8 @@ def run_genetic_algorithm(net):
         eval_allocation_wrapper, 
         calculate_fitness=calculate_fitness,
         net=net, 
-        gen_data_path=GEN_DATA_ORIGINAL,
-        load_data_path=LOAD_DATA_ORIGINAL
+        gen_data_path=GEN_DATA_PATH,
+        load_data_path=LOAD_DATA_PATH
     )
 
     # Prepare logging for this run
@@ -412,7 +407,7 @@ def run_genetic_algorithm(net):
         # If a greedy seed is present at index 1, evaluate and print its fitness
         if len(population) > 1:
             print("Evaluating greedy seed (initial population member 1):")
-            g_fitness, g_sum = calculate_fitness(population[1], net, GEN_DATA_ORIGINAL, LOAD_DATA_ORIGINAL)
+            g_fitness, g_sum = calculate_fitness(population[1], net, GEN_DATA_PATH, LOAD_DATA_PATH)
             print(f"Greedy seed fitness: {g_fitness}, Sum Max Loading: {g_sum}")
     except Exception as e:
         print(f"Warning: could not display/evaluate initial population preview: {e}")
