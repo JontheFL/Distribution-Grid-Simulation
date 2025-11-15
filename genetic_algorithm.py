@@ -6,9 +6,10 @@ This script:
 2. Implements a genetic algorithm to optimize the allocation of load and generation profiles
     to minimize the sum of maximum line loadings over a time series simulation.
 
-
 Usage:
+    python genetic_algorithm.py
     python genetic_algorithm.py --num_pop 10 --num_gen 20
+    python genetic_algorithm.py --seed 493331583 --no_parallel
 """
 
 import random
@@ -33,6 +34,8 @@ NUM_GENERATIONS = 10         # number of times to evolve the population
 TOURNAMENT_SIZE = 3          # how many allocations "compete" to be a parent
 MUTATION_RATE = 0.15          # 5% chance an allocation will be randomly mutated
 CROSSOVER_RATE = 0.9         # 90% chance parents will "breed" (vs. just cloning)
+GEN_DATA_PATH = "Data/GenerationData_B.csv"
+LOAD_DATA_PATH = "Data/LoadData_B.csv"
 
 # --- 1. Pandapower Grid & Simulation ---
 def create_grid_B():
@@ -140,83 +143,32 @@ def calculate_fitness(allocation: tuple[list[int], list[int]],
         return 0.0, 99999.0 # Return very bad fitness and high loading
 
 # --- 3. Genetic Algorithm Operators ---
-def create_random_allocation() -> tuple[list[int], list[int]]:
+def create_random_allocation(num_profiles) -> tuple[list[int], list[int]]:
     """
     Creates a random allocation of for load and gen.
     """
-    index_order_load = random.sample(range(NUM_PROFILES), NUM_PROFILES)
-    index_order_gen = random.sample(range(NUM_PROFILES), NUM_PROFILES)
+    index_order_load = random.sample(range(num_profiles), num_profiles)
+    index_order_gen = random.sample(range(num_profiles), num_profiles)
     return tuple([index_order_load, index_order_gen]) # type: ignore
 
-def construct_round_robin_seed(gen_data_path="Data/GenerationData_B.csv", 
-                               load_data_path="Data/LoadData_B.csv"
-                               ) -> tuple[list[int], list[int]]:
-    """
-    Construct a greedy round-robin seed allocation.
-    Strategy:
-    - Compute a simple exporter score per household (peak generation minus load).
-    - Sort households by descending exporter score (big exporters first).
-    - Spread them across bus positions using an even-odd interleaving (0,2,4...,1,3,5...) to avoid clustering.
-    Returns a tuple (load_order, gen_order) where both lists assign the same household to the same bus.
-    """
-    if gen_data_path is None or load_data_path is None:
-        # Fallback to random allocation if data not available
-        return create_random_allocation()
-
-    # Compute net export time series (generation - load) and take peak export per household
-    net_export = (pd.read_csv(gen_data_path, index_col=0) - pd.read_csv(load_data_path, index_col=0))
-    # peak export magnitude per household (MW)
-    peak_export = net_export.max(axis=0)
-
-    # Sort households by peak export descending; columns are assumed to be 0..NUM_PROFILES-1
-    try:
-        households = list(peak_export.sort_values(ascending=False).index.astype(int))
-    except Exception:
-        # Fallback: use column positions
-        households = list(range(NUM_PROFILES))
-
-    # Position order: interleave evens then odds to spread similar households
-    pos_order = list(range(0, NUM_PROFILES, 2)) + list(range(1, NUM_PROFILES, 2))
-
-    allocation = [None] * NUM_PROFILES
-    for i, h in enumerate(households):
-        pos = pos_order[i]
-        allocation[pos] = int(h)# type: ignore
-
-    # If any slots remain (shouldn't), fill them with remaining household indices
-    remaining = [h for h in range(NUM_PROFILES) if h not in allocation]
-    for i in range(NUM_PROFILES):
-        if allocation[i] is None:
-            allocation[i] = remaining.pop(0)# type: ignore
-
-    # Use same assignment for loads and gens (household i assigned to bus allocation.index(i))
-    return (allocation.copy(), allocation.copy())# type: ignore
-
-def create_initial_population(base_allocation: tuple[list[int], list[int]],
-                              gen_data_path="Data/GenerationData_B.csv",
-                              load_data_path="Data/LoadData_B.csv"
+def create_initial_population(initial_allocation: tuple[list[int], list[int]],
+                              population_size=POPULATION_SIZE,
+                              num_profiles=NUM_PROFILES
                               ) -> list[tuple[list[int], list[int]]]:
     """
     Creates the initial population of allocations.
     """
     # Start with the base allocation (keep original behavior without deepcopy)
-    population: list[tuple[list[int], list[int]]] = [base_allocation]
-
-    # Add a greedy round-robin seed to give the GA a smarter starting point
-    try:
-        greedy_seed = construct_round_robin_seed(gen_data_path, load_data_path)
-        population.append(greedy_seed)
-    except Exception:
-        # If anything goes wrong, fall back to a random allocation
-        population.append(create_random_allocation())
+    population: list[tuple[list[int], list[int]]] = [initial_allocation]
 
     # Fill the remainder with random allocations
-    for _ in range(POPULATION_SIZE - len(population)):
-        population.append(create_random_allocation())
+    for _ in range(population_size - len(population)):
+        population.append(create_random_allocation(num_profiles))
     return population
 
 def tournament_selection(population: list[tuple[list[int], list[int]]], 
-                         fitnesses: list[float]
+                         fitnesses: list[float],
+                         tournament_size=TOURNAMENT_SIZE
                          ) -> tuple[list[int], list[int]]:
     """
     Selects a parent allocation using tournament selection.
@@ -225,7 +177,7 @@ def tournament_selection(population: list[tuple[list[int], list[int]]],
     3. Return that allocation as the selected parent.
     """
     # Select random indices for the tournament (use actual population length)
-    tournament_indices = random.sample(range(len(population)), TOURNAMENT_SIZE)
+    tournament_indices = random.sample(range(len(population)), tournament_size)
 
     # Get the allocations and their fitnesses
     tournament_allocations = [population[i] for i in tournament_indices]
@@ -308,57 +260,31 @@ def eval_allocation_wrapper(allocation: tuple[list[int], list[int]],
     return calculate_fitness(allocation, net, gen_data_path, load_data_path)
 
 def run_genetic_algorithm(net, 
-                          gen_data_path="Data/GenerationData_B.csv", 
-                          load_data_path="Data/LoadData_B.csv"): 
+                          gen_data_path=GEN_DATA_PATH, 
+                          load_data_path=LOAD_DATA_PATH,
+                          initial_allocation = None,
+                          population_size=POPULATION_SIZE,
+                          num_generations=NUM_GENERATIONS,
+                          tournament_size=TOURNAMENT_SIZE,
+                          mutation_rate=MUTATION_RATE,
+                          crossover_rate=CROSSOVER_RATE,
+                          args=None
+                          ): 
     """
     """
-    global POPULATION_SIZE, NUM_GENERATIONS
-    # --- Define Arguments Parser ---
-    parser = argparse.ArgumentParser(description="A script to run genetic algorithm for distribution grid optimization.")
+    # get num profiles from net 
+    num_profiles = net.load.shape[0]
 
-    # Add arguments for population size and number of generations
-    parser.add_argument("--num_pop",
-                        type=int,
-                        default=POPULATION_SIZE,
-                        help=f"Number of allocations in each generation. Default is {POPULATION_SIZE}."
-                        )
+    # Fill initial allocation if not provided
+    if initial_allocation is None:
+        initial_allocation = get_base_indices(net)
     
-
-    parser.add_argument("--num_gen",
-                        type=int,
-                        default=NUM_GENERATIONS,
-                        help=f"Number of generations to run the algorithm. Default is {NUM_GENERATIONS}."
-                        )
-
-
-    # Optional: reproducibility seed and single-threaded debug mode
-    parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducible runs")
-    parser.add_argument("--no_parallel", action="store_true", help="Run evaluations single-threaded (no multiprocessing)")
-
-    # Re-parse to include the new args (safe because defaults are provided)
-    args = parser.parse_args()
-
-    # Apply seed if provided
-    # If no seed provided, generate one and record it so runs are reproducible
-    if args.seed is None:
-        gen_seed = random.randint(0, 2**31 - 1)
-        args.seed = int(gen_seed)
-        print(f"No seed provided. Generated seed: {args.seed}")
-
-    # Seed RNGs (use the provided or generated seed)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-
-    # Update global GA parameters based on parsed arguments
-    POPULATION_SIZE = args.num_pop
-    NUM_GENERATIONS = args.num_gen
-
     # --- Test the fitness function ---
     print("--- Distribution Grid Genetic Algorithm Optimization Test ---")
     
     print("Distribution Grid:\n", net)
 
-    # Testing for base allocation and random allocation
+    # Testing for base allocation and initial allocation
     base_allocation = get_base_indices(net)
     print("\nBase Allocation Test:")
     print("Load Allocation:", base_allocation[0])
@@ -367,20 +293,20 @@ def run_genetic_algorithm(net,
     fitness, sum_max_loading = calculate_fitness(base_allocation, net, gen_data_path, load_data_path)
     print(f"Fitness: {fitness}, Sum Max Loading: {sum_max_loading}")
 
-    print("\nRandom Allocation Test:")
-    rand_allocation = create_random_allocation()
-    print("Load Allocation:", rand_allocation[0])
-    print("Generation Allocation:", rand_allocation[1])
-    fitness, sum_max_loading = calculate_fitness(rand_allocation, net, gen_data_path, load_data_path)
+    print("\nInitial Allocation Test:")
+    print("Load Allocation:", initial_allocation[0])
+    print("Generation Allocation:", initial_allocation[1])
+    fitness, sum_max_loading = calculate_fitness(initial_allocation, net, gen_data_path, load_data_path)
     print(f"Fitness: {fitness}, Sum Max Loading: {sum_max_loading}")
-
+    
     
     # Genetic Algorithm Execution
     print("\n========================================================")
     print("=== Distribution Grid Genetic Algorithm Optimization ===")
     print("========================================================")
     print(f"CPUs available: {cpu_count()}")
-    print(f"Using {POPULATION_SIZE} allocations, evolving for {NUM_GENERATIONS} generations.")
+    print(f"Using {population_size} allocations, evolving for {num_generations} generations.")
+    
 
     # --- 1. Setup ---
     # Track the solution found across ALL gnerations
@@ -400,29 +326,15 @@ def run_genetic_algorithm(net,
     # Prepare logging for this run
     gen_logs = []
     run_start = time.time()
-
+    
     # --- 2. Create Initial Population ---
     print("Creating initial population...")
     # Use the base allocation as one member of the initial population
-    population = create_initial_population(base_allocation)
-
-    # Diagnostic: show the first few members of the initial population (base, greedy seed, ...)
-    try:
-        print("Initial population preview (first 3):")
-        for i, alloc in enumerate(population[:3]):
-            print(f"  member {i}: Load order: {alloc[0]}\n            Gen order: {alloc[1]}")
-
-        # If a greedy seed is present at index 1, evaluate and print its fitness
-        if len(population) > 1:
-            print("Evaluating greedy seed (initial population member 1):")
-            g_fitness, g_sum = calculate_fitness(population[1], net, gen_data_path, load_data_path)
-            print(f"Greedy seed fitness: {g_fitness}, Sum Max Loading: {g_sum}")
-    except Exception as e:
-        print(f"Warning: could not display/evaluate initial population preview: {e}")
+    population = create_initial_population(initial_allocation, population_size, num_profiles)
 
     # --- 3. Run the Evolution Loop ---
-    for gen in range(NUM_GENERATIONS):
-        print(f"\n--- Generation {gen + 1} / {NUM_GENERATIONS} ---")
+    for gen in range(num_generations):
+        print(f"\n--- Generation {gen + 1} / {num_generations} ---")
 
         # --- 3a. Evaluate Fitness ---
         print(f"Evaluationg {len(population)} allocations...")
@@ -472,20 +384,20 @@ def run_genetic_algorithm(net,
         # Elitism: carry over the best allocation from this generation
         new_population.append(best_gen_allocation)
 
-        while len(new_population) < POPULATION_SIZE:
+        while len(new_population) < population_size:
             # 1. Selection - select two parents
-            parent1 = tournament_selection(population, fitnesses)
-            parent2 = tournament_selection(population, fitnesses)
+            parent1 = tournament_selection(population, fitnesses, tournament_size)
+            parent2 = tournament_selection(population, fitnesses, tournament_size)
 
             # 2. Crossover - breed the parents to create a child
-            if random.random() < CROSSOVER_RATE:
+            if random.random() < crossover_rate:
                 child = ordered_crossover(parent1, parent2)
             else:
                 # 3. No crossover, just clone parent1
                 child = parent1
 
             # 4. Mutation - randomly mutate the child
-            if random.random() < MUTATION_RATE:
+            if random.random() < mutation_rate:
                 child = swap_mutation(child)
 
             # 5. Add the child to the new population
@@ -501,6 +413,7 @@ def run_genetic_algorithm(net,
     print(f"Final sum of max loadings: {overall_best_loading:.2f}%")
     print(f"Load Allocation: {overall_best_allocation[0]}")# type: ignore
     print(f"Generation Allocation: {overall_best_allocation[1]}")# type: ignore
+
     run_end = time.time()
 
     # Save a run summary for reproducibility / analysis
@@ -508,11 +421,11 @@ def run_genetic_algorithm(net,
     run_summary = {
         'timestamp': timestamp_str,
         'seed': getattr(args, 'seed', None),
-        'pop_size': POPULATION_SIZE,
-        'num_generations': NUM_GENERATIONS,
-        'mutation_rate': MUTATION_RATE,
-        'crossover_rate': CROSSOVER_RATE,
-        'tournament_size': TOURNAMENT_SIZE,
+        'pop_size': population_size,
+        'num_generations': num_generations,
+        'mutation_rate': mutation_rate,
+        'crossover_rate': crossover_rate,
+        'tournament_size': tournament_size,
         'no_parallel': bool(getattr(args, 'no_parallel', False)),
         'overall_best_loading': float(overall_best_loading),
         'overall_best_allocation': overall_best_allocation,
@@ -521,10 +434,10 @@ def run_genetic_algorithm(net,
     }
 
     try:
-        out_dir = "GA Runs"
+        out_dir = "GA runs C"
         # create target folder if it doesn't exist
         os.makedirs(out_dir, exist_ok=True)
-        out_file = os.path.join(out_dir, f"ga_run_{timestamp_str}.json")
+        out_file = os.path.join(out_dir, f"ga_run_C_{timestamp_str}.json")
         with open(out_file, 'w') as fh:
             json.dump(run_summary, fh, indent=2)
         print(f"Run summary written to: {out_file}")
@@ -532,9 +445,52 @@ def run_genetic_algorithm(net,
         print(f"Warning: could not write run summary: {e}")
 
 if __name__ == "__main__":
+    # --- Define Arguments Parser ---
+    parser = argparse.ArgumentParser(description="A script to run genetic algorithm for distribution grid optimization.")
+
+    # Add arguments for population size and number of generations
+    parser.add_argument("--num_pop",
+                        type=int,
+                        default=POPULATION_SIZE,
+                        help=f"Number of allocations in each generation. Default is {POPULATION_SIZE}."
+                        )
+    
+
+    parser.add_argument("--num_gen",
+                        type=int,
+                        default=NUM_GENERATIONS,
+                        help=f"Number of generations to run the algorithm. Default is {NUM_GENERATIONS}."
+                        )
+
+
+    # Optional: reproducibility seed and single-threaded debug mode
+    parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducible runs")
+    parser.add_argument("--no_parallel", action="store_true", help="Run evaluations single-threaded (no multiprocessing)")
+
+    # Re-parse to include the new args (safe because defaults are provided)
+    args = parser.parse_args()
+
+    # Apply seed if provided
+    # If no seed provided, generate one and record it so runs are reproducible
+    if args.seed is None:
+        gen_seed = random.randint(0, 2**31 - 1)
+        args.seed = int(gen_seed)
+        print(f"No seed provided. Generated seed: {args.seed}")
+
+    # Seed RNGs (use the provided or generated seed)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+
+    # Update global GA parameters based on parsed arguments
+    population_size = args.num_pop
+    num_generations = args.num_gen
 
     net = create_grid_B()
     run_genetic_algorithm(net, 
-                          gen_data_path="Data/GenerationData_B.csv", 
-                          load_data_path="Data/LoadData_B.csv"
+                          gen_data_path=GEN_DATA_PATH, 
+                          load_data_path=LOAD_DATA_PATH,
+                          initial_allocation = None,
+                          population_size=population_size,
+                          num_generations=num_generations,
+                          args=args
                           )

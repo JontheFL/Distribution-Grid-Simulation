@@ -1,0 +1,102 @@
+{
+  "timestamp": "20251115_211249",
+  "seed": 493331583,
+  "pop_size": 3,
+  "num_generations": 1,
+  "mutation_rate": 0.15,
+  "crossover_rate": 0.9,
+  "tournament_size": 3,
+  "no_parallel": false,
+  "overall_best_loading": 88.972002578059,
+  "overall_best_allocation": [
+    [
+      13,
+      2,
+      12,
+      8,
+      14,
+      4,
+      11,
+      1,
+      9,
+      7,
+      10,
+      0,
+      3,
+      5,
+      15,
+      6,
+      16
+    ],
+    [
+      13,
+      2,
+      12,
+      8,
+      14,
+      4,
+      11,
+      1,
+      9,
+      7,
+      10,
+      0,
+      3,
+      5,
+      15,
+      6,
+      16
+    ]
+  ],
+  "generation_logs": [
+    {
+      "generation": 1,
+      "best_fitness": 0.011239490750167802,
+      "best_loading": 88.972002578059,
+      "mean_fitness": 0.010095607774142853,
+      "median_fitness": 0.01103806868576389,
+      "worst_fitness": 0.00800926388649687,
+      "best_allocation": [
+        [
+          13,
+          2,
+          12,
+          8,
+          14,
+          4,
+          11,
+          1,
+          9,
+          7,
+          10,
+          0,
+          3,
+          5,
+          15,
+          6,
+          16
+        ],
+        [
+          13,
+          2,
+          12,
+          8,
+          14,
+          4,
+          11,
+          1,
+          9,
+          7,
+          10,
+          0,
+          3,
+          5,
+          15,
+          6,
+          16
+        ]
+      ]
+    }
+  ],
+  "runtime_seconds": 4.87987208366394
+}
