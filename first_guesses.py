@@ -1,5 +1,5 @@
 import numpy as np
-from genetic_algorithm_C import create_random_allocation
+from genetic_algorithm import create_random_allocation
 import pandas as pd
 
 GEN_DATA_PATH = "Data/GenerationData_B.csv"
