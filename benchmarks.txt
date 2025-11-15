@@ -101,3 +101,15 @@ CROSSOVER_RATE = 0.9
 
 82.28% with tournament size increased to 4 from 3 WHILE
 generation drop from 10 to 5 -> great
+
+JONAS
+
+Final sum of max loadings: 79.72%
+Load Allocation: [13, 11, 1, 4, 7, 8, 10, 2, 9, 14, 3, 16, 15, 0, 6, 12, 5]
+Generation Allocation: [13, 14, 5, 7, 9, 10, 3, 12, 15, 11, 2, 16, 1, 0, 8, 6, 4]
+using
+    population_size=200,
+    num_generations=25,
+    tournament_size=6,
+    mutation_rate=0.15,
+    crossover_rate=0.9
