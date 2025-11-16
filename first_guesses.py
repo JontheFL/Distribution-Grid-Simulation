@@ -10,17 +10,18 @@ def create_smart_seed(ranked_pairs, ranked_buses):
     """
     Creates a "smart" seed allocation by assigning the best load-generation pairs
     to the weakest buses in the network.
-    
+
     :param ranked_pairs: List of tuples (load_index, gen_index) ranked from best to worst
     :param ranked_buses: List of bus indices ranked from weakest to strongest
     :return: List mapping bus index to (load_index, gen_index)
     """
     print("Creating smart seed allocation...")
 
+    # Initialize allocation lists
     load_allocation = [None] * len(ranked_buses)
     gen_allocation = [None] * len(ranked_buses)
 
-    # Iterate NUM_PROFILES times, matchin best-to-weakest
+    # Iterate NUM_PROFILES times, matching best load/gen pair from ranked_pairs to weakest bus from ranked_buses
     for i in range(len(ranked_pairs)):
         # Get the i-th best pair
         pair = ranked_pairs[i]

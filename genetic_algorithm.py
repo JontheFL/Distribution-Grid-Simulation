@@ -271,6 +271,18 @@ def run_genetic_algorithm(net,
                           args=None
                           ): 
     """
+    Runs the genetic algorithm to optimize the load and generation profile allocation.
+
+    :param net: The pandapower network to optimize.
+    :param gen_data_path: Path to the generation data CSV file.
+    :param load_data_path: Path to the load data CSV file.
+    :param initial_allocation: Optional initial allocation to seed the population.
+    :param population_size: Number of allocations in each generation.
+    :param num_generations: Number of generations to run the algorithm.
+    :param tournament_size: Number of allocations competing in each tournament selection.
+    :param mutation_rate: Probability of mutation for each child allocation.
+    :param crossover_rate: Probability of crossover between parents.
+    :param args: Additional arguments for the algorithm (e.g., for parallelization).
     """
     # get num profiles from net 
     num_profiles = net.load.shape[0]
