@@ -25,8 +25,7 @@ def run_time_series(
     index_order_load,
     results_suffix="A",
 ):
-    # preserve the original time index from the input gen_data (e.g., 0..23 hours)
-    df_gen = pd.DataFrame(gen_data.values, index=gen_data.index, columns=net.sgen.index)
+    df_gen = pd.DataFrame(gen_data.values, columns=net.sgen.index)
     ds_sgen = DFData(df_gen)
 
     # make a ConstControl object for the sgen
@@ -39,8 +38,7 @@ def run_time_series(
         profile_name=net.sgen.index,
     )
 
-    # preserve the original time index from the input load_data
-    df_load = pd.DataFrame(load_data.values, index=load_data.index, columns=net.load.index)
+    df_load = pd.DataFrame(load_data.values, columns=net.load.index)
     ds_load = DFData(df_load)
 
     # make a ConstControl object for the load
@@ -62,9 +60,8 @@ def run_time_series(
     ow.log_variable("res_line", "loading_percent")
     ow.log_variable("res_ext_grid", "p_mw")
 
-    # run the time series using the explicit time steps from the dataframes' index
-    # this avoids the library guessing the time steps and removes the informational message
-    timeseries.run_timeseries(net, time_steps=list(df_gen.index))
+    # run the time series
+    timeseries.run_timeseries(net)
 
 
     res_ext = pd.read_csv(
