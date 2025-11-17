@@ -417,6 +417,7 @@ def run_genetic_algorithm(net,
         
         # The new population becomes the current population
         population = new_population
+        print(f"Size of the new genertation {len(population)}.")
 
     # --- 4. Report the overall best solution found ---
     print("\n===============================================")
