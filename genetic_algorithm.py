@@ -299,7 +299,7 @@ def run_genetic_algorithm(net,
     print("Distribution Grid:\n", net)
 
     # Testing for base allocation and initial allocation
-    base_allocation = get_base_indices(net)
+    base_allocation = get_base_indices(net, num_profiles)
     print("\nBase Allocation Test:")
     print("Load Allocation:", base_allocation[0])
     print("Generation Allocation:", base_allocation[1])
