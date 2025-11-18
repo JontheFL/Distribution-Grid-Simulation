@@ -70,7 +70,7 @@ def create_grid_B():
     
     return net
 
-def get_base_indices(net) -> tuple[list[int], list[int]]: 
+def get_base_indices(net, num_profiles=NUM_PROFILES) -> tuple[list[int], list[int]]: 
     """
     Get the order of node indices to be optimized.
     Assumes they are indexed 0 to 16.
@@ -78,8 +78,8 @@ def get_base_indices(net) -> tuple[list[int], list[int]]:
     index_order_load = list(net.load.index)
     index_order_gen = list(net.sgen.index)
 
-    if len(index_order_load) != NUM_PROFILES or len(index_order_gen) != NUM_PROFILES:
-        print(f"ERROR: Grid must have exactly {NUM_PROFILES} load/generation nodes.")
+    if len(index_order_load) != num_profiles or len(index_order_gen) != num_profiles:
+        print(f"ERROR: Grid must have exactly {num_profiles} load/generation nodes.")
     
     return tuple([index_order_load, index_order_gen]) # type: ignore
 
@@ -187,7 +187,9 @@ def tournament_selection(population: list[tuple[list[int], list[int]]],
     winner_index = np.argmax(tournament_fitnesses)
     return tournament_allocations[winner_index]
 
-def ordered_crossover(parent1_tuple: tuple[list[int], list[int]], parent2_tuple: tuple[list[int], list[int]]) -> tuple[list[int], list[int]]:
+def ordered_crossover(parent1_tuple: tuple[list[int], list[int]], 
+                      parent2_tuple: tuple[list[int], list[int]],
+                      num_profiles=NUM_PROFILES) -> tuple[list[int], list[int]]:
     """
     "Breeds" two parents allocations to create a child, preserving the permutation.
     This is called "Ordered Crossover".
@@ -195,12 +197,11 @@ def ordered_crossover(parent1_tuple: tuple[list[int], list[int]], parent2_tuple:
     1. Take a random "slice" from parent1.
     2. Fill in the child's other slots using genes from parent2, in order, skipping duplicates.
     """
-    none_list = [None] * NUM_PROFILES
+    none_list = [None] * num_profiles
     child_tuple = (none_list.copy(), none_list.copy())
 
     # 1. Select two random crossover points
-    start, end = sorted(random.sample(range(NUM_PROFILES), 2))
-
+    start, end = sorted(random.sample(range(num_profiles), 2))
     # 2. Copy the "slice" from parent1 to the child
     child_tuple[0][start:end] = parent1_tuple[0][start:end] # type: ignore
     child_tuple[1][start:end] = parent1_tuple[1][start:end]# type: ignore
@@ -213,28 +214,29 @@ def ordered_crossover(parent1_tuple: tuple[list[int], list[int]], parent2_tuple:
     
     # for load allocation
     idx = 0
-    for i in range(NUM_PROFILES):
+    for i in range(num_profiles):
         if child_tuple[0][i] is None:
             child_tuple[0][i] = parent2_items_load[idx]# type: ignore
             idx += 1
     
     idx = 0
     # for generation allocation
-    for i in range(NUM_PROFILES):
+    for i in range(num_profiles):
         if child_tuple[1][i] is None:
             child_tuple[1][i] = parent2_items_gen[idx]# type: ignore
             idx += 1
 
     return child_tuple# type: ignore
 
-def swap_mutation(allocation: tuple[list[int], list[int]]) -> tuple[list[int], list[int]]:
+def swap_mutation(allocation: tuple[list[int], list[int]],
+                  num_profiles=NUM_PROFILES) -> tuple[list[int], list[int]]:
     """
     Introduces a random change in an allocation.
     1. Pick two random indices.
     2. Swap the values at those indices.
     """
     # Operate on copies to avoid mutating the parent allocation in-place
-    idx1, idx2 = random.sample(range(NUM_PROFILES), 2)
+    idx1, idx2 = random.sample(range(num_profiles), 2)
 
     new_load = allocation[0].copy()
     new_gen = allocation[1].copy()
@@ -289,7 +291,7 @@ def run_genetic_algorithm(net,
 
     # Fill initial allocation if not provided
     if initial_allocation is None:
-        initial_allocation = get_base_indices(net)
+        initial_allocation = get_base_indices(net, num_profiles)
     
     # --- Test the fitness function ---
     print("--- Distribution Grid Genetic Algorithm Optimization Test ---")
@@ -403,21 +405,20 @@ def run_genetic_algorithm(net,
 
             # 2. Crossover - breed the parents to create a child
             if random.random() < crossover_rate:
-                child = ordered_crossover(parent1, parent2)
+                child = ordered_crossover(parent1, parent2, num_profiles)
             else:
                 # 3. No crossover, just clone parent1
                 child = parent1
 
             # 4. Mutation - randomly mutate the child
             if random.random() < mutation_rate:
-                child = swap_mutation(child)
+                child = swap_mutation(child, num_profiles)
 
             # 5. Add the child to the new population
             new_population.append(child)
         
         # The new population becomes the current population
         population = new_population
-        print(f"Size of the new genertation {len(population)}.")
 
     # --- 4. Report the overall best solution found ---
     print("\n===============================================")
